@@ -1,5 +1,6 @@
 target/
 dist/
 frontend/
+!frontend/Cargo.toml
 .git/
 .env
