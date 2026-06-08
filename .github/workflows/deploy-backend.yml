@@ -15,6 +15,7 @@ env:
   PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
   REGION: us-central1
   SERVICE: movie-night-api
+  IMAGE: us-central1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/movie-night/api
 
 jobs:
   deploy:
@@ -28,22 +29,22 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v2
 
-      - name: Configure Docker for GCR
-        run: gcloud auth configure-docker --quiet
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 
       - name: Build and push image
         run: |
           docker build \
-            -t gcr.io/$PROJECT_ID/$SERVICE:${{ github.sha }} \
-            -t gcr.io/$PROJECT_ID/$SERVICE:latest \
+            -t $IMAGE:${{ github.sha }} \
+            -t $IMAGE:latest \
             .
-          docker push gcr.io/$PROJECT_ID/$SERVICE:${{ github.sha }}
-          docker push gcr.io/$PROJECT_ID/$SERVICE:latest
+          docker push $IMAGE:${{ github.sha }}
+          docker push $IMAGE:latest
 
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy $SERVICE \
-            --image gcr.io/$PROJECT_ID/$SERVICE:${{ github.sha }} \
+            --image $IMAGE:${{ github.sha }} \
             --region $REGION \
             --platform managed \
             --allow-unauthenticated \
