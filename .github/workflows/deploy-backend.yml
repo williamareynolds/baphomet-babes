@@ -1,12 +1,14 @@
 name: Deploy Backend
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
       - "backend/**"
       - "shared/**"
       - "Dockerfile"
+      - ".dockerignore"
       - ".github/workflows/deploy-backend.yml"
 
 env:
