@@ -1,16 +1,15 @@
 mod auth;
-mod db;
 mod error;
 mod models;
 mod routes;
 
 use axum::{Router, http::{HeaderValue, Method}, routing::get};
-use std::sync::Arc;
+use firestore::FirestoreDb;
 use tower_http::cors::{Any, CorsLayer};
 
 #[derive(Clone)]
 pub struct AppState {
-    pub db: Arc<libsql::Database>,
+    pub db: FirestoreDb,
     pub jwt_secret: String,
     pub member_invite_code: String,
     pub admin_invite_code: String,
@@ -20,29 +19,17 @@ pub struct AppState {
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let db_url = std::env::var("TURSO_URL").expect("TURSO_URL required");
-    let db_token = std::env::var("TURSO_TOKEN").expect("TURSO_TOKEN required");
+    let gcp_project = std::env::var("GCP_PROJECT_ID").expect("GCP_PROJECT_ID required");
     let jwt_secret = std::env::var("JWT_SECRET").expect("JWT_SECRET required");
-    let member_invite_code =
-        std::env::var("MEMBER_INVITE_CODE").expect("MEMBER_INVITE_CODE required");
-    let admin_invite_code =
-        std::env::var("ADMIN_INVITE_CODE").expect("ADMIN_INVITE_CODE required");
+    let member_invite_code = std::env::var("MEMBER_INVITE_CODE").expect("MEMBER_INVITE_CODE required");
+    let admin_invite_code = std::env::var("ADMIN_INVITE_CODE").expect("ADMIN_INVITE_CODE required");
     let allowed_origin = std::env::var("ALLOWED_ORIGIN").unwrap_or_else(|_| "*".to_string());
 
-    let db = libsql::Builder::new_remote(db_url, db_token)
-        .build()
+    let db = FirestoreDb::new(&gcp_project)
         .await
-        .expect("DB connect failed");
+        .expect("failed to connect to Firestore");
 
-    let conn = db.connect().expect("DB connection failed");
-    db::migrate(&conn).await.expect("migration failed");
-
-    let state = AppState {
-        db: Arc::new(db),
-        jwt_secret,
-        member_invite_code,
-        admin_invite_code,
-    };
+    let state = AppState { db, jwt_secret, member_invite_code, admin_invite_code };
 
     let cors = if allowed_origin == "*" {
         CorsLayer::new()

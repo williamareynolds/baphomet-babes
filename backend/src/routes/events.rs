@@ -2,15 +2,14 @@ use crate::{
     AppState,
     auth::{require_admin, require_auth},
     error::{AppError, AppResult},
+    models::EventDoc,
 };
-use axum::{
-    Json,
-    extract::{Path, State},
-    http::HeaderMap,
-};
-use libsql::params;
+use anyhow::Context;
+use axum::{Json, extract::{Path, State}, http::HeaderMap};
 use shared::{CreateEventRequest, Event, UpdateEventRequest};
 use uuid::Uuid;
+
+const EVENTS: &str = "movie_nights";
 
 pub fn router() -> axum::Router<AppState> {
     use axum::routing::{get, put};
@@ -19,32 +18,34 @@ pub fn router() -> axum::Router<AppState> {
         .route("/:id", put(update_event).delete(delete_event))
 }
 
+fn doc_to_event(d: EventDoc) -> Event {
+    Event {
+        id: d.id,
+        event_type: d.event_type,
+        title: d.title,
+        date: d.date,
+        description: d.description,
+        poll_embed_url: d.poll_embed_url,
+    }
+}
+
 async fn list_events(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> AppResult<Json<Vec<Event>>> {
     require_auth(&headers, &state.jwt_secret)?;
-    let conn = state.db.connect()?;
-    let mut rows = conn
-        .query(
-            "SELECT id, event_type, title, date, description, poll_embed_url
-             FROM movie_nights ORDER BY date ASC",
-            (),
-        )
-        .await?;
 
-    let mut events = Vec::new();
-    while let Some(row) = rows.next().await? {
-        events.push(Event {
-            id: row.get(0)?,
-            event_type: row.get(1)?,
-            title: row.get(2)?,
-            date: row.get(3)?,
-            description: row.get(4)?,
-            poll_embed_url: row.get(5)?,
-        });
-    }
-    Ok(Json(events))
+    let mut docs: Vec<EventDoc> = state.db
+        .fluent()
+        .select()
+        .from(EVENTS)
+        .obj()
+        .query()
+        .await
+        .context("failed to list events")?;
+
+    docs.sort_by(|a, b| a.date.cmp(&b.date));
+    Ok(Json(docs.into_iter().map(doc_to_event).collect()))
 }
 
 async fn create_event(
@@ -55,9 +56,7 @@ async fn create_event(
     require_admin(&headers, &state.jwt_secret)?;
 
     if req.event_type != "main" && req.event_type != "special" {
-        return Err(AppError::BadRequest(
-            "event_type must be 'main' or 'special'".into(),
-        ));
+        return Err(AppError::BadRequest("event_type must be 'main' or 'special'".into()));
     }
 
     let id = Uuid::new_v4().to_string();
@@ -66,30 +65,27 @@ async fn create_event(
         .unwrap()
         .as_secs() as i64;
 
-    let conn = state.db.connect()?;
-    conn.execute(
-        "INSERT INTO movie_nights (id, event_type, title, date, description, poll_embed_url, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-        params![
-            id.clone(),
-            req.event_type.clone(),
-            req.title.clone(),
-            req.date.clone(),
-            req.description.clone(),
-            req.poll_embed_url.clone(),
-            now
-        ],
-    )
-    .await?;
+    let doc = EventDoc {
+        id: id.clone(),
+        event_type: req.event_type.clone(),
+        title: req.title.clone(),
+        date: req.date.clone(),
+        description: req.description.clone(),
+        poll_embed_url: req.poll_embed_url.clone(),
+        created_at: now,
+    };
 
-    Ok(Json(Event {
-        id,
-        event_type: req.event_type,
-        title: req.title,
-        date: req.date,
-        description: req.description,
-        poll_embed_url: req.poll_embed_url,
-    }))
+    let _: EventDoc = state.db
+        .fluent()
+        .insert()
+        .into(EVENTS)
+        .document_id(&id)
+        .object(&doc)
+        .execute()
+        .await
+        .context("failed to create event")?;
+
+    Ok(Json(doc_to_event(doc)))
 }
 
 async fn update_event(
@@ -100,48 +96,38 @@ async fn update_event(
 ) -> AppResult<Json<Event>> {
     require_admin(&headers, &state.jwt_secret)?;
 
-    let conn = state.db.connect()?;
-    let mut rows = conn
-        .query(
-            "SELECT id, event_type, title, date, description, poll_embed_url
-             FROM movie_nights WHERE id = ?1",
-            params![id.clone()],
-        )
-        .await?;
-    let row = rows.next().await?.ok_or(AppError::NotFound)?;
-    let existing = Event {
-        id: row.get(0)?,
-        event_type: row.get(1)?,
-        title: row.get(2)?,
-        date: row.get(3)?,
-        description: row.get(4)?,
-        poll_embed_url: row.get(5)?,
-    };
+    let existing: Option<EventDoc> = state.db
+        .fluent()
+        .select()
+        .by_id_in(EVENTS)
+        .obj()
+        .one(&id)
+        .await
+        .context("failed to fetch event")?;
 
-    let updated = Event {
+    let existing = existing.ok_or(AppError::NotFound)?;
+
+    let updated = EventDoc {
         id: existing.id.clone(),
         event_type: req.event_type.unwrap_or(existing.event_type),
         title: req.title.unwrap_or(existing.title),
         date: req.date.unwrap_or(existing.date),
         description: req.description.or(existing.description),
         poll_embed_url: req.poll_embed_url.or(existing.poll_embed_url),
+        created_at: existing.created_at,
     };
 
-    conn.execute(
-        "UPDATE movie_nights SET event_type=?1, title=?2, date=?3, description=?4, poll_embed_url=?5
-         WHERE id=?6",
-        params![
-            updated.event_type.clone(),
-            updated.title.clone(),
-            updated.date.clone(),
-            updated.description.clone(),
-            updated.poll_embed_url.clone(),
-            updated.id.clone()
-        ],
-    )
-    .await?;
+    let _: EventDoc = state.db
+        .fluent()
+        .update()
+        .in_col(EVENTS)
+        .document_id(&id)
+        .object(&updated)
+        .execute()
+        .await
+        .context("failed to update event")?;
 
-    Ok(Json(updated))
+    Ok(Json(doc_to_event(updated)))
 }
 
 async fn delete_event(
@@ -150,12 +136,28 @@ async fn delete_event(
     Path(id): Path<String>,
 ) -> AppResult<()> {
     require_admin(&headers, &state.jwt_secret)?;
-    let conn = state.db.connect()?;
-    let changed = conn
-        .execute("DELETE FROM movie_nights WHERE id = ?1", params![id])
-        .await?;
-    if changed == 0 {
+
+    let exists: Option<EventDoc> = state.db
+        .fluent()
+        .select()
+        .by_id_in(EVENTS)
+        .obj()
+        .one(&id)
+        .await
+        .context("failed to check event")?;
+
+    if exists.is_none() {
         return Err(AppError::NotFound);
     }
+
+    state.db
+        .fluent()
+        .delete()
+        .from(EVENTS)
+        .document_id(&id)
+        .execute()
+        .await
+        .context("failed to delete event")?;
+
     Ok(())
 }

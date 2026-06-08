@@ -4,8 +4,6 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum AppError {
-    #[error("database error: {0}")]
-    Database(#[from] libsql::Error),
     #[error("{0}")]
     Auth(String),
     #[error("not found")]
@@ -14,7 +12,7 @@ pub enum AppError {
     Forbidden,
     #[error("{0}")]
     BadRequest(String),
-    #[error("internal error")]
+    #[error("internal error: {0}")]
     Internal(#[from] anyhow::Error),
 }
 
@@ -25,12 +23,9 @@ impl IntoResponse for AppError {
             AppError::NotFound => StatusCode::NOT_FOUND,
             AppError::Forbidden => StatusCode::FORBIDDEN,
             AppError::BadRequest(_) => StatusCode::BAD_REQUEST,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
+            AppError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
-        let body = Json(ErrorResponse {
-            error: self.to_string(),
-        });
-        (status, body).into_response()
+        (status, Json(ErrorResponse { error: self.to_string() })).into_response()
     }
 }
 
