@@ -1,0 +1,56 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "shared/**"
+      - "Dockerfile"
+      - ".github/workflows/deploy-backend.yml"
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: us-central1
+  SERVICE: movie-night-api
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker --quiet
+
+      - name: Build and push image
+        run: |
+          docker build \
+            -t gcr.io/$PROJECT_ID/$SERVICE:${{ github.sha }} \
+            -t gcr.io/$PROJECT_ID/$SERVICE:latest \
+            .
+          docker push gcr.io/$PROJECT_ID/$SERVICE:${{ github.sha }}
+          docker push gcr.io/$PROJECT_ID/$SERVICE:latest
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy $SERVICE \
+            --image gcr.io/$PROJECT_ID/$SERVICE:${{ github.sha }} \
+            --region $REGION \
+            --platform managed \
+            --allow-unauthenticated \
+            --min-instances 0 \
+            --max-instances 3 \
+            --set-env-vars "\
+              TURSO_URL=${{ secrets.TURSO_URL }},\
+              TURSO_TOKEN=${{ secrets.TURSO_TOKEN }},\
+              JWT_SECRET=${{ secrets.JWT_SECRET }},\
+              MEMBER_INVITE_CODE=${{ secrets.MEMBER_INVITE_CODE }},\
+              ADMIN_INVITE_CODE=${{ secrets.ADMIN_INVITE_CODE }},\
+              ALLOWED_ORIGIN=https://movienight.baphometbabes.com"

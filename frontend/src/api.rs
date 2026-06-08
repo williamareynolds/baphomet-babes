@@ -1,0 +1,105 @@
+use shared::{AuthResponse, CreateEventRequest, Event, LoginRequest, RegisterRequest, UpdateEventRequest};
+
+// In production, set via Trunk feature flag or env substitution
+// After first deploy, either:
+//   a) set this to raw Cloud Run URL: gcloud run services describe movie-night-api --region us-central1 --format 'value(status.url)'
+//   b) map api.movienight.baphometbabes.com → Cloud Run (recommended, see DNS setup in README)
+#[cfg(feature = "production")]
+pub const API_BASE: &str = "https://api.movienight.baphometbabes.com";
+
+#[cfg(not(feature = "production"))]
+pub const API_BASE: &str = "http://localhost:8080";
+
+async fn get<T: serde::de::DeserializeOwned>(path: &str, token: &str) -> Result<T, String> {
+    let resp = gloo_net::http::Request::get(&format!("{API_BASE}{path}"))
+        .header("Authorization", &format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.ok() {
+        let err: shared::ErrorResponse = resp.json().await.unwrap_or(shared::ErrorResponse { error: "unknown error".into() });
+        return Err(err.error);
+    }
+    resp.json().await.map_err(|e| e.to_string())
+}
+
+async fn post_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(
+    path: &str,
+    body: &B,
+    token: Option<&str>,
+) -> Result<T, String> {
+    let mut req = gloo_net::http::Request::post(&format!("{API_BASE}{path}"))
+        .header("Content-Type", "application/json");
+    if let Some(t) = token {
+        req = req.header("Authorization", &format!("Bearer {t}"));
+    }
+    let resp = req
+        .json(body)
+        .map_err(|e| e.to_string())?
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.ok() {
+        let err: shared::ErrorResponse = resp.json().await.unwrap_or(shared::ErrorResponse { error: "unknown error".into() });
+        return Err(err.error);
+    }
+    resp.json().await.map_err(|e| e.to_string())
+}
+
+#[allow(dead_code)]
+async fn put_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(
+    path: &str,
+    body: &B,
+    token: &str,
+) -> Result<T, String> {
+    let resp = gloo_net::http::Request::put(&format!("{API_BASE}{path}"))
+        .header("Content-Type", "application/json")
+        .header("Authorization", &format!("Bearer {token}"))
+        .json(body)
+        .map_err(|e| e.to_string())?
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.ok() {
+        let err: shared::ErrorResponse = resp.json().await.unwrap_or(shared::ErrorResponse { error: "unknown error".into() });
+        return Err(err.error);
+    }
+    resp.json().await.map_err(|e| e.to_string())
+}
+
+async fn delete(path: &str, token: &str) -> Result<(), String> {
+    let resp = gloo_net::http::Request::delete(&format!("{API_BASE}{path}"))
+        .header("Authorization", &format!("Bearer {token}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.ok() {
+        return Err("delete failed".into());
+    }
+    Ok(())
+}
+
+pub async fn login(req: LoginRequest) -> Result<AuthResponse, String> {
+    post_json("/auth/login", &req, None).await
+}
+
+pub async fn register(req: RegisterRequest) -> Result<AuthResponse, String> {
+    post_json("/auth/register", &req, None).await
+}
+
+pub async fn fetch_events(token: &str) -> Result<Vec<Event>, String> {
+    get("/events", token).await
+}
+
+pub async fn create_event(req: CreateEventRequest, token: &str) -> Result<Event, String> {
+    post_json("/events", &req, Some(token)).await
+}
+
+#[allow(dead_code)]
+pub async fn update_event(id: &str, req: UpdateEventRequest, token: &str) -> Result<Event, String> {
+    put_json(&format!("/events/{id}"), &req, token).await
+}
+
+pub async fn delete_event(id: &str, token: &str) -> Result<(), String> {
+    delete(&format!("/events/{id}"), token).await
+}
