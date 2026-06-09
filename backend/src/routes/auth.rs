@@ -1,4 +1,4 @@
-use crate::{AppState, auth::create_token, error::{AppError, AppResult}, models::UserDoc};
+use crate::{AppState, auth::create_token, error::{AppError, AppResult}, models::{InviteCodeDoc, UserDoc}};
 use anyhow::Context;
 use argon2::{
     Argon2, PasswordHash, PasswordHasher, PasswordVerifier,
@@ -9,6 +9,7 @@ use shared::{AuthResponse, LoginRequest, RegisterRequest, UserInfo};
 use uuid::Uuid;
 
 const USERS: &str = "users";
+const INVITES: &str = "invite_codes";
 
 pub fn router() -> axum::Router<AppState> {
     use axum::routing::post;
@@ -51,13 +52,49 @@ async fn register(
     State(state): State<AppState>,
     Json(req): Json<RegisterRequest>,
 ) -> AppResult<Json<AuthResponse>> {
-    let role = match req.invite_code.as_str() {
-        c if c == state.admin_invite_code => "admin",
-        c if c == state.member_invite_code => "member",
-        _ => return Err(AppError::Auth("invalid invite code".into())),
-    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
 
-    // Check email not already taken
+    let (role, invite_doc): (String, Option<InviteCodeDoc>) =
+        if req.invite_code == state.superadmin_invite_code {
+            // One-time bootstrap — reject if superadmin already exists
+            let existing: Vec<UserDoc> = state.db
+                .fluent()
+                .select()
+                .from(USERS)
+                .filter(|q| q.field("role").eq("superadmin"))
+                .obj()
+                .query()
+                .await
+                .context("failed to check superadmin")?;
+
+            if !existing.is_empty() {
+                return Err(AppError::Auth("invalid invite code".into()));
+            }
+            ("superadmin".to_string(), None)
+        } else {
+            let codes: Vec<InviteCodeDoc> = state.db
+                .fluent()
+                .select()
+                .from(INVITES)
+                .filter(|q| q.field("code").eq(&req.invite_code))
+                .obj()
+                .query()
+                .await
+                .context("failed to query invite codes")?;
+
+            let doc = codes.into_iter().next()
+                .ok_or_else(|| AppError::Auth("invalid invite code".into()))?;
+
+            if doc.used {
+                return Err(AppError::Auth("invite code already used".into()));
+            }
+            let role = doc.role.clone();
+            (role, Some(doc))
+        };
+
     let existing: Vec<UserDoc> = state.db
         .fluent()
         .select()
@@ -79,38 +116,42 @@ async fn register(
         .to_string();
 
     let id = Uuid::new_v4().to_string();
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
-
-    let user_doc = UserDoc {
-        id: id.clone(),
-        email: req.email.clone(),
-        username: req.username.clone(),
-        password_hash: hash,
-        role: role.to_string(),
-        created_at: now,
-    };
 
     let _: UserDoc = state.db
         .fluent()
         .insert()
         .into(USERS)
         .document_id(&id)
-        .object(&user_doc)
+        .object(&UserDoc {
+            id: id.clone(),
+            email: req.email.clone(),
+            username: req.username.clone(),
+            password_hash: hash,
+            role: role.clone(),
+            created_at: now,
+        })
         .execute()
         .await
         .context("failed to create user")?;
 
-    let token = create_token(&id, role, &state.jwt_secret)?;
+    if let Some(mut doc) = invite_doc {
+        let doc_id = doc.id.clone();
+        doc.used = true;
+        doc.used_by = Some(id.clone());
+        let _: InviteCodeDoc = state.db
+            .fluent()
+            .update()
+            .in_col(INVITES)
+            .document_id(&doc_id)
+            .object(&doc)
+            .execute()
+            .await
+            .context("failed to mark invite used")?;
+    }
+
+    let token = create_token(&id, &role, &state.jwt_secret)?;
     Ok(Json(AuthResponse {
         token,
-        user: UserInfo {
-            id,
-            email: req.email,
-            username: req.username,
-            role: role.to_string(),
-        },
+        user: UserInfo { id, email: req.email, username: req.username, role },
     }))
 }

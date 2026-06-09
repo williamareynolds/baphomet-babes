@@ -11,7 +11,11 @@ pub struct AuthUser {
 
 impl AuthUser {
     pub fn is_admin(&self) -> bool {
-        self.role == "admin"
+        self.role == "admin" || self.role == "superadmin"
+    }
+
+    pub fn is_superadmin(&self) -> bool {
+        self.role == "superadmin"
     }
 }
 

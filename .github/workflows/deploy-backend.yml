@@ -53,6 +53,5 @@ jobs:
             --set-env-vars "\
               GCP_PROJECT_ID=$PROJECT_ID,\
               JWT_SECRET=${{ secrets.JWT_SECRET }},\
-              MEMBER_INVITE_CODE=${{ secrets.MEMBER_INVITE_CODE }},\
-              ADMIN_INVITE_CODE=${{ secrets.ADMIN_INVITE_CODE }},\
+              SUPERADMIN_INVITE_CODE=${{ secrets.SUPERADMIN_INVITE_CODE }},\
               ALLOWED_ORIGIN=https://movienight.baphometbabes.com"

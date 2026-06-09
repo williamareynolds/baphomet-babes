@@ -51,7 +51,16 @@ pub fn require_auth(headers: &HeaderMap, secret: &str) -> AppResult<Claims> {
 
 pub fn require_admin(headers: &HeaderMap, secret: &str) -> AppResult<Claims> {
     let claims = require_auth(headers, secret)?;
-    if claims.role != "admin" {
+    if claims.role != "admin" && claims.role != "superadmin" {
+        return Err(AppError::Forbidden);
+    }
+    Ok(claims)
+}
+
+#[allow(dead_code)]
+pub fn require_superadmin(headers: &HeaderMap, secret: &str) -> AppResult<Claims> {
+    let claims = require_auth(headers, secret)?;
+    if claims.role != "superadmin" {
         return Err(AppError::Forbidden);
     }
     Ok(claims)

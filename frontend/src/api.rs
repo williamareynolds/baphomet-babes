@@ -1,11 +1,11 @@
-use shared::{AuthResponse, CreateEventRequest, Event, LoginRequest, RegisterRequest, UpdateEventRequest};
+use shared::{AuthResponse, CreateEventRequest, CreateInviteRequest, Event, InviteCode, LoginRequest, RegisterRequest, UpdateEventRequest};
 
 // In production, set via Trunk feature flag or env substitution
 // After first deploy, either:
 //   a) set this to raw Cloud Run URL: gcloud run services describe movie-night-api --region us-central1 --format 'value(status.url)'
 //   b) map api.movienight.baphometbabes.com → Cloud Run (recommended, see DNS setup in README)
 #[cfg(feature = "production")]
-pub const API_BASE: &str = "https://api.movienight.baphometbabes.com";
+pub const API_BASE: &str = "https://movie-night-api-r6vuubbgla-uc.a.run.app";
 
 #[cfg(not(feature = "production"))]
 pub const API_BASE: &str = "http://localhost:8080";
@@ -102,4 +102,16 @@ pub async fn update_event(id: &str, req: UpdateEventRequest, token: &str) -> Res
 
 pub async fn delete_event(id: &str, token: &str) -> Result<(), String> {
     delete(&format!("/events/{id}"), token).await
+}
+
+pub async fn fetch_invites(token: &str) -> Result<Vec<InviteCode>, String> {
+    get("/invites", token).await
+}
+
+pub async fn create_invite(req: CreateInviteRequest, token: &str) -> Result<InviteCode, String> {
+    post_json("/invites", &req, Some(token)).await
+}
+
+pub async fn delete_invite(id: &str, token: &str) -> Result<(), String> {
+    delete(&format!("/invites/{id}"), token).await
 }

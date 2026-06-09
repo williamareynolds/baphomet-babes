@@ -11,6 +11,17 @@ pub struct UserDoc {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InviteCodeDoc {
+    pub id: String,
+    pub code: String,
+    pub role: String,
+    pub created_by: String,
+    pub used: bool,
+    pub used_by: Option<String>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventDoc {
     pub id: String,
     pub event_type: String,

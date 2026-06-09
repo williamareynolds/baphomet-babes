@@ -58,6 +58,22 @@ pub struct UpdateEventRequest {
     pub poll_embed_url: Option<String>,
 }
 
+// Invite codes
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InviteCode {
+    pub id: String,
+    pub code: String,
+    pub role: String, // "admin" | "member"
+    pub created_by: String,
+    pub used: bool,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateInviteRequest {
+    pub role: String, // "admin" | "member"
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorResponse {
     pub error: String,

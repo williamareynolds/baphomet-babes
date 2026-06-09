@@ -11,8 +11,7 @@ use tower_http::cors::{Any, CorsLayer};
 pub struct AppState {
     pub db: FirestoreDb,
     pub jwt_secret: String,
-    pub member_invite_code: String,
-    pub admin_invite_code: String,
+    pub superadmin_invite_code: String,
 }
 
 #[tokio::main]
@@ -21,15 +20,14 @@ async fn main() {
 
     let gcp_project = std::env::var("GCP_PROJECT_ID").expect("GCP_PROJECT_ID required");
     let jwt_secret = std::env::var("JWT_SECRET").expect("JWT_SECRET required");
-    let member_invite_code = std::env::var("MEMBER_INVITE_CODE").expect("MEMBER_INVITE_CODE required");
-    let admin_invite_code = std::env::var("ADMIN_INVITE_CODE").expect("ADMIN_INVITE_CODE required");
+    let superadmin_invite_code = std::env::var("SUPERADMIN_INVITE_CODE").expect("SUPERADMIN_INVITE_CODE required");
     let allowed_origin = std::env::var("ALLOWED_ORIGIN").unwrap_or_else(|_| "*".to_string());
 
     let db = FirestoreDb::new(&gcp_project)
         .await
         .expect("failed to connect to Firestore");
 
-    let state = AppState { db, jwt_secret, member_invite_code, admin_invite_code };
+    let state = AppState { db, jwt_secret, superadmin_invite_code };
 
     let cors = if allowed_origin == "*" {
         CorsLayer::new()
@@ -47,6 +45,7 @@ async fn main() {
         .route("/health", get(|| async { "ok" }))
         .nest("/auth", routes::auth::router())
         .nest("/events", routes::events::router())
+        .nest("/invites", routes::invites::router())
         .with_state(state)
         .layer(cors);
 
