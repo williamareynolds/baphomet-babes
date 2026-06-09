@@ -229,11 +229,11 @@ pub fn AdminPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                                 {c.role.clone()}
                                             </span>
                                         </div>
-                                        <Show when=move || !used>
+                                        {(!used).then(|| view! {
                                             <button class="secondary"
                                                 on:click=move |_| handle_delete_invite(id.clone())
                                             >"Revoke"</button>
-                                        </Show>
+                                        })}
                                     </div>
                                 }
                             }).collect::<Vec<_>>()}
