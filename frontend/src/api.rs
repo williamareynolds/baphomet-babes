@@ -95,7 +95,6 @@ pub async fn create_event(req: CreateEventRequest, token: &str) -> Result<Event,
     post_json("/events", &req, Some(token)).await
 }
 
-#[allow(dead_code)]
 pub async fn update_event(id: &str, req: UpdateEventRequest, token: &str) -> Result<Event, String> {
     put_json(&format!("/events/{id}"), &req, token).await
 }

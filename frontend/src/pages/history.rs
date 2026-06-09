@@ -1,9 +1,8 @@
 use crate::{api, context::AuthUser};
 use leptos::prelude::*;
-use leptos_router::components::A;
 
 #[component]
-pub fn HomePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
+pub fn HistoryPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let events: RwSignal<Option<Result<Vec<shared::Event>, String>>> = RwSignal::new(None);
 
     Effect::new(move |_| {
@@ -27,7 +26,7 @@ pub fn HomePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
 
     view! {
         <main>
-            <h1>"Upcoming Movie Nights"</h1>
+            <h1>"Past Movie Nights"</h1>
             <Show
                 when=move || auth.get().is_none()
                 fallback=move || {
@@ -39,15 +38,16 @@ pub fn HomePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                 None => view! { <p>"Loading..."</p> }.into_any(),
                                 Some(Err(e)) => view! { <p class="error">{e}</p> }.into_any(),
                                 Some(Ok(list)) => {
-                                    let upcoming: Vec<_> = list.into_iter()
-                                        .filter(|e| e.date >= today)
+                                    let mut past: Vec<_> = list.into_iter()
+                                        .filter(|e| e.date < today)
                                         .collect();
-                                    if upcoming.is_empty() {
-                                        view! { <p>"No upcoming events. Check back soon!"</p> }.into_any()
+                                    past.sort_by(|a, b| b.date.cmp(&a.date));
+                                    if past.is_empty() {
+                                        view! { <p>"No past events yet."</p> }.into_any()
                                     } else {
                                         view! {
                                             <div>
-                                                {upcoming.into_iter().map(|e| view! {
+                                                {past.into_iter().map(|e| view! {
                                                     <div class="card">
                                                         <span class={format!("badge badge-{}", e.event_type)}>
                                                             {if e.event_type == "main" { "Main Event" } else { "Special Feature" }}
@@ -61,11 +61,6 @@ pub fn HomePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                                         <h2 style="margin-top:0.5rem;">{e.title}</h2>
                                                         <p style="color:#aaa;">{e.date}</p>
                                                         {e.description.map(|d| view! { <p style="margin-top:0.5rem;">{d}</p> })}
-                                                        {e.poll_embed_url.map(|_| view! {
-                                                            <A href="/vote">
-                                                                <button style="margin-top:0.75rem;">"Vote on Date →"</button>
-                                                            </A>
-                                                        })}
                                                     </div>
                                                 }).collect::<Vec<_>>()}
                                             </div>
@@ -78,7 +73,7 @@ pub fn HomePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                 }
             >
                 <div class="card">
-                    <p>"Please "<A href="/login">"log in"</A>" to see upcoming events."</p>
+                    <p>"Please log in to see past events."</p>
                 </div>
             </Show>
         </main>

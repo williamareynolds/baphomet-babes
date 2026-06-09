@@ -29,5 +29,7 @@ pub struct EventDoc {
     pub date: String,
     pub description: Option<String>,
     pub poll_embed_url: Option<String>,
+    #[serde(default)]
+    pub poster_url: Option<String>,
     pub created_at: i64,
 }

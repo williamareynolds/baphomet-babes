@@ -317,6 +317,7 @@ name = "frontend"
 version = "0.1.0"
 dependencies = [
  "gloo-net",
+ "js-sys",
  "leptos",
  "leptos_router",
  "serde",

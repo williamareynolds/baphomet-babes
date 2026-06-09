@@ -11,9 +11,11 @@ pub fn Nav(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
 
     view! {
         <nav>
-            <A href="/">"Movie Night"</A>
+            <A href="/" attr:class="nav-brand">"Baphomet Babes"</A>
+            <A href="/about">"About"</A>
             <Show when=move || auth.get().is_some()>
                 <A href="/vote">"Vote"</A>
+                <A href="/history">"History"</A>
                 <Show when=move || auth.get().map(|u| u.is_admin()).unwrap_or(false)>
                     <A href="/admin">"Admin"</A>
                 </Show>

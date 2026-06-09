@@ -26,6 +26,7 @@ fn doc_to_event(d: EventDoc) -> Event {
         date: d.date,
         description: d.description,
         poll_embed_url: d.poll_embed_url,
+        poster_url: d.poster_url,
     }
 }
 
@@ -72,6 +73,7 @@ async fn create_event(
         date: req.date.clone(),
         description: req.description.clone(),
         poll_embed_url: req.poll_embed_url.clone(),
+        poster_url: req.poster_url.clone(),
         created_at: now,
     };
 
@@ -114,6 +116,7 @@ async fn update_event(
         date: req.date.unwrap_or(existing.date),
         description: req.description.or(existing.description),
         poll_embed_url: req.poll_embed_url.or(existing.poll_embed_url),
+        poster_url: req.poster_url.or(existing.poster_url),
         created_at: existing.created_at,
     };
 

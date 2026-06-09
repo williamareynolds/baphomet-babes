@@ -38,6 +38,8 @@ pub struct Event {
     pub date: String,
     pub description: Option<String>,
     pub poll_embed_url: Option<String>,
+    #[serde(default)]
+    pub poster_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,6 +49,7 @@ pub struct CreateEventRequest {
     pub date: String,
     pub description: Option<String>,
     pub poll_embed_url: Option<String>,
+    pub poster_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -56,6 +59,7 @@ pub struct UpdateEventRequest {
     pub date: Option<String>,
     pub description: Option<String>,
     pub poll_embed_url: Option<String>,
+    pub poster_url: Option<String>,
 }
 
 // Invite codes
