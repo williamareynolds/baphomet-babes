@@ -3,9 +3,11 @@ mod error;
 mod models;
 mod routes;
 
+use std::sync::Arc;
 use axum::{Router, http::{HeaderValue, Method}, routing::get};
 use firestore::FirestoreDb;
-use tower_http::cors::{AllowOrigin, Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, CorsLayer};
+use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -21,7 +23,7 @@ async fn main() {
     let gcp_project = std::env::var("GCP_PROJECT_ID").expect("GCP_PROJECT_ID required");
     let jwt_secret = std::env::var("JWT_SECRET").expect("JWT_SECRET required");
     let superadmin_invite_code = std::env::var("SUPERADMIN_INVITE_CODE").expect("SUPERADMIN_INVITE_CODE required");
-    let allowed_origins = std::env::var("ALLOWED_ORIGINS").unwrap_or_else(|_| "*".to_string());
+    let allowed_origins = std::env::var("ALLOWED_ORIGINS").expect("ALLOWED_ORIGINS required");
 
     let db = FirestoreDb::new(&gcp_project)
         .await
@@ -29,25 +31,27 @@ async fn main() {
 
     let state = AppState { db, jwt_secret, superadmin_invite_code };
 
-    let cors = if allowed_origins == "*" {
-        CorsLayer::new()
-            .allow_origin(Any)
-            .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
-            .allow_headers(Any)
-    } else {
-        let origins: Vec<HeaderValue> = allowed_origins
-            .split(',')
-            .map(|s| s.trim().parse::<HeaderValue>().expect("invalid origin in ALLOWED_ORIGINS"))
-            .collect();
-        CorsLayer::new()
-            .allow_origin(AllowOrigin::predicate(move |origin, _| origins.contains(origin)))
-            .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
-            .allow_headers(Any)
-    };
+    let origins: Vec<HeaderValue> = allowed_origins
+        .split(',')
+        .map(|s| s.trim().parse::<HeaderValue>().expect("invalid origin in ALLOWED_ORIGINS"))
+        .collect();
+
+    let cors = CorsLayer::new()
+        .allow_origin(AllowOrigin::predicate(move |origin, _| origins.contains(origin)))
+        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
+        .allow_headers(tower_http::cors::Any);
+
+    let auth_governor = Arc::new(
+        GovernorConfigBuilder::default()
+            .per_second(2)
+            .burst_size(8)
+            .finish()
+            .unwrap(),
+    );
 
     let app = Router::new()
         .route("/health", get(|| async { "ok" }))
-        .nest("/auth", routes::auth::router())
+        .nest("/auth", routes::auth::router().layer(GovernorLayer { config: auth_governor }))
         .nest("/events", routes::events::router())
         .nest("/invites", routes::invites::router())
         .with_state(state)

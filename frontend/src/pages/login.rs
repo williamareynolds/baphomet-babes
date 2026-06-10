@@ -1,7 +1,5 @@
-use crate::{
-    api,
-    context::{AuthUser, save_auth},
-};
+use auth_client::{AuthUser, save_auth};
+use crate::api;
 use leptos::prelude::*;
 use leptos_router::hooks::use_navigate;
 use shared::{AuthResponse, LoginRequest, RegisterRequest};

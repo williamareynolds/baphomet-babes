@@ -1,5 +1,38 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct AuthUser {
+    pub id: String,
+    pub email: String,
+    pub username: String,
+    pub role: String,
+    pub token: String,
+}
+
+impl AuthUser {
+    pub fn is_admin(&self) -> bool {
+        self.role == "admin" || self.role == "superadmin"
+    }
+    pub fn is_superadmin(&self) -> bool {
+        self.role == "superadmin"
+    }
+}
+
+/// Stored in cross-domain cookie — no JWT token.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct CookieIdentity {
+    pub id: String,
+    pub email: String,
+    pub username: String,
+    pub role: String,
+}
+
+impl From<&AuthUser> for CookieIdentity {
+    fn from(u: &AuthUser) -> Self {
+        CookieIdentity { id: u.id.clone(), email: u.email.clone(), username: u.username.clone(), role: u.role.clone() }
+    }
+}
+
 // Auth
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoginRequest {

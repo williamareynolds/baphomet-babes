@@ -1,4 +1,5 @@
-use crate::{api, context::AuthUser};
+use auth_client::AuthUser;
+use crate::api;
 use leptos::prelude::*;
 
 #[component]

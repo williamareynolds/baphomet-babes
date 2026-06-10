@@ -1,6 +1,6 @@
 use crate::error::{AppError, AppResult};
 use axum::http::HeaderMap;
-use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
+use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -34,7 +34,7 @@ pub fn verify_token(token: &str, secret: &str) -> AppResult<Claims> {
     decode::<Claims>(
         token,
         &DecodingKey::from_secret(secret.as_bytes()),
-        &Validation::default(),
+        &Validation::new(Algorithm::HS256),
     )
     .map(|d| d.claims)
     .map_err(|e| AppError::Auth(e.to_string()))

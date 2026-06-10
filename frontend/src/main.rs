@@ -1,7 +1,6 @@
 mod api;
 mod app;
 mod components;
-mod context;
 mod pages;
 
 use leptos::prelude::*;

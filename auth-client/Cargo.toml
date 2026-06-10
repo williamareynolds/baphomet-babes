@@ -1,0 +1,14 @@
+[package]
+name = "auth-client"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+shared = { path = "../shared" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+base64 = "0.22"
+web-sys = { version = "0.3", features = ["Window", "Storage", "Location", "Document", "HtmlDocument"] }
+wasm-bindgen = "=0.2.122"

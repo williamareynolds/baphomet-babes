@@ -1,7 +1,10 @@
+use auth_client::{AuthUser, load_identity};
 use leptos::prelude::*;
 
 #[component]
-pub fn HomePage() -> impl IntoView {
+pub fn HomePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
+    let identity = load_identity();
+
     view! {
         <main>
             <div style="margin-bottom:3.5rem;">
@@ -24,6 +27,33 @@ pub fn HomePage() -> impl IntoView {
                     <div class="app-arrow">"Open →"</div>
                 </a>
             </div>
+
+            <Show when=move || auth.get().is_some()>
+                <div style="margin-bottom:2rem;">
+                    <h3>"Member Area"</h3>
+                    <p style="color:#6a5a6a;font-size:1rem;">
+                        "Welcome back, "
+                        {move || auth.get().map(|u| u.username).unwrap_or_default()}
+                        ". More member features coming soon."
+                    </p>
+                </div>
+            </Show>
+
+            <Show when=move || auth.get().is_none()>
+                {match &identity {
+                    Some(id) => {
+                        let username = id.username.clone();
+                        view! {
+                            <p style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#4a3a5a;margin-bottom:2rem;">
+                                "Welcome back, " {username} ". "
+                                <a href="/login" style="color:#c41e3a;">"Log in"</a>
+                                " to access member features."
+                            </p>
+                        }.into_any()
+                    }
+                    None => view! { <span></span> }.into_any()
+                }}
+            </Show>
 
             <p style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;letter-spacing:0.1em;color:#3a2a3a;border-top:1px solid #1e1526;padding-top:1.5rem;">
                 "All are welcome. No exceptions."

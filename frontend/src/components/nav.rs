@@ -1,4 +1,4 @@
-use crate::context::{AuthUser, clear_auth};
+use auth_client::{AuthUser, clear_auth};
 use leptos::prelude::*;
 use leptos_router::components::A;
 

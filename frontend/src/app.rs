@@ -1,6 +1,6 @@
+use auth_client::{AuthUser, load_auth};
 use crate::{
     components::nav::Nav,
-    context::{AuthUser, load_auth},
     pages::{admin::AdminPage, history::HistoryPage, home::HomePage, login::LoginPage, vote::VotePage},
 };
 use leptos::prelude::*;
