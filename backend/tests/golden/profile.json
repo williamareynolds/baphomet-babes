@@ -1,0 +1,14 @@
+{
+  "user_id": "5e1e3b9f-0000-4000-8000-000000000001",
+  "username": "firstbabe",
+  "display_name": "First Babe",
+  "bio": "Crafts, cosmos, and cinema.",
+  "pronouns": "they/them",
+  "avatar_url": "https://example.com/avatar.png",
+  "email": "babe@baphometbabes.com",
+  "links": [
+    { "label": "Website", "url": "https://example.com" }
+  ],
+  "is_public": true,
+  "updated_at": 1781136000
+}

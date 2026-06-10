@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use shared::ProfileLink;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserDoc {
@@ -32,4 +33,24 @@ pub struct EventDoc {
     #[serde(default)]
     pub poster_url: Option<String>,
     pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProfileDoc {
+    pub user_id: String,
+    pub username: String,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub bio: Option<String>,
+    #[serde(default)]
+    pub pronouns: Option<String>,
+    #[serde(default)]
+    pub avatar_url: Option<String>,
+    #[serde(default)]
+    pub email: Option<String>,
+    #[serde(default)]
+    pub links: Vec<ProfileLink>,
+    pub is_public: bool,
+    pub updated_at: i64,
 }

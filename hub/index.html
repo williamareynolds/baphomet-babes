@@ -63,13 +63,15 @@
         font-family: 'Bebas Neue', sans-serif;
         font-size: 1.5rem;
         letter-spacing: 0.1em;
-        color: #c41e3a !important;
         text-transform: none;
         line-height: 1;
-        transition: color 0.2s !important;
+        color: inherit;
       }
 
-      nav a.nav-brand:hover { color: #e0253f !important; }
+      nav a.nav-brand .brand-name { color: #e2d8d0; transition: color 0.2s; }
+      nav a.nav-brand .brand-accent { color: #c41e3a; transition: color 0.2s; }
+      nav a.nav-brand:hover .brand-name { color: #fff; }
+      nav a.nav-brand:hover .brand-accent { color: #e0253f; }
 
       main { padding: 3rem 2rem; max-width: 1100px; width: 100%; margin: 0 auto; }
 

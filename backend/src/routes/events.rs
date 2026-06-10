@@ -15,7 +15,7 @@ pub fn router() -> axum::Router<AppState> {
     use axum::routing::{get, put};
     axum::Router::new()
         .route("/", get(list_events).post(create_event))
-        .route("/:id", put(update_event).delete(delete_event))
+        .route("/{id}", put(update_event).delete(delete_event))
 }
 
 fn doc_to_event(d: EventDoc) -> Event {

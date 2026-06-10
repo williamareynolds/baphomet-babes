@@ -1,65 +1,34 @@
-mod auth;
-mod error;
-mod models;
-mod routes;
-
-use std::sync::Arc;
-use axum::{Router, http::{HeaderValue, Method}, routing::get};
+use std::net::SocketAddr;
+use backend::{AppState, RateLimit, build_app};
 use firestore::FirestoreDb;
-use tower_http::cors::{AllowOrigin, CorsLayer};
-use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
-
-#[derive(Clone)]
-pub struct AppState {
-    pub db: FirestoreDb,
-    pub jwt_secret: String,
-    pub superadmin_invite_code: String,
-}
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
 
+    // gcloud-sdk's rustls requires a process-level crypto provider; pin ring
+    // so another dependency enabling aws-lc-rs can't make selection ambiguous.
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("failed to install rustls ring provider");
+
     let gcp_project = std::env::var("GCP_PROJECT_ID").expect("GCP_PROJECT_ID required");
     let jwt_secret = std::env::var("JWT_SECRET").expect("JWT_SECRET required");
     let superadmin_invite_code = std::env::var("SUPERADMIN_INVITE_CODE").expect("SUPERADMIN_INVITE_CODE required");
-    let allowed_origins = std::env::var("ALLOWED_ORIGINS").expect("ALLOWED_ORIGINS required");
+    let allowed_origins = std::env::var("ALLOWED_ORIGINS").ok();
 
     let db = FirestoreDb::new(&gcp_project)
         .await
         .expect("failed to connect to Firestore");
 
     let state = AppState { db, jwt_secret, superadmin_invite_code };
-
-    let origins: Vec<HeaderValue> = allowed_origins
-        .split(',')
-        .map(|s| s.trim().parse::<HeaderValue>().expect("invalid origin in ALLOWED_ORIGINS"))
-        .collect();
-
-    let cors = CorsLayer::new()
-        .allow_origin(AllowOrigin::predicate(move |origin, _| origins.contains(origin)))
-        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
-        .allow_headers(tower_http::cors::Any);
-
-    let auth_governor = Arc::new(
-        GovernorConfigBuilder::default()
-            .per_second(2)
-            .burst_size(8)
-            .finish()
-            .unwrap(),
-    );
-
-    let app = Router::new()
-        .route("/health", get(|| async { "ok" }))
-        .nest("/auth", routes::auth::router().layer(GovernorLayer { config: auth_governor }))
-        .nest("/events", routes::events::router())
-        .nest("/invites", routes::invites::router())
-        .with_state(state)
-        .layer(cors);
+    let app = build_app(state, allowed_origins.as_deref(), RateLimit::default());
 
     let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
     let addr = format!("0.0.0.0:{port}");
     tracing::info!("listening on {addr}");
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
+        .await
+        .unwrap();
 }

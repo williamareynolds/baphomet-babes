@@ -1,0 +1,109 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Unit, property & golden tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - name: Run test suites
+        # frontend/hub are WASM-only; covered by the type-check step below
+        run: cargo test --workspace --exclude frontend --exclude hub
+
+      - name: Type-check WASM frontends
+        run: |
+          cargo check -p hub --target wasm32-unknown-unknown
+          cargo check -p frontend --target wasm32-unknown-unknown
+
+  integration:
+    name: Integration tests (Firestore emulator)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          install_components: cloud-firestore-emulator
+
+      - name: Start Firestore emulator
+        run: |
+          gcloud emulators firestore start --host-port=127.0.0.1:8787 --quiet > /tmp/firestore-emulator.log 2>&1 &
+          for i in $(seq 1 45); do
+            grep -q "running" /tmp/firestore-emulator.log 2>/dev/null && break
+            sleep 2
+          done
+          grep "running" /tmp/firestore-emulator.log
+
+      - name: Run integration tests
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8787
+        run: cargo test -p backend --test integration
+
+  e2e:
+    name: End-to-end tests (Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          install_components: cloud-firestore-emulator
+
+      - uses: cargo-bins/cargo-binstall@main
+
+      - name: Install trunk
+        run: cargo binstall -y trunk
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: e2e/.nvmrc
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Install Playwright
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run e2e tests
+        working-directory: e2e
+        run: npx playwright test

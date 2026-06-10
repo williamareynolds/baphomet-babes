@@ -1,0 +1,9 @@
+{
+  "token": "eyJhbGciOiJIUzI1NiJ9.fixed.signature",
+  "user": {
+    "id": "5e1e3b9f-0000-4000-8000-000000000001",
+    "email": "babe@baphometbabes.com",
+    "username": "firstbabe",
+    "role": "superadmin"
+  }
+}

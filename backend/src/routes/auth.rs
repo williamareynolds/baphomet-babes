@@ -149,6 +149,10 @@ async fn register(
             .context("failed to mark invite used")?;
     }
 
+    crate::routes::profile::create_profile_for_user(&state, &id, &req.username)
+        .await
+        .context("failed to create profile")?;
+
     let token = create_token(&id, &role, &state.jwt_secret)?;
     Ok(Json(AuthResponse {
         token,
