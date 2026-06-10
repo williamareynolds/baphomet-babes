@@ -1,18 +1,38 @@
 {
-  "hosting": {
-    "public": "frontend/dist",
-    "ignore": ["firebase.json", "**/.*"],
-    "rewrites": [
-      {
-        "source": "**",
-        "destination": "/index.html"
-      }
-    ],
-    "headers": [
-      {
-        "source": "**/*.wasm",
-        "headers": [{ "key": "Content-Type", "value": "application/wasm" }]
-      }
-    ]
-  }
+  "hosting": [
+    {
+      "target": "hub",
+      "public": "hub/dist",
+      "ignore": ["firebase.json", "**/.*"],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ],
+      "headers": [
+        {
+          "source": "**/*.wasm",
+          "headers": [{ "key": "Content-Type", "value": "application/wasm" }]
+        }
+      ]
+    },
+    {
+      "target": "movienight",
+      "public": "frontend/dist",
+      "ignore": ["firebase.json", "**/.*"],
+      "rewrites": [
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ],
+      "headers": [
+        {
+          "source": "**/*.wasm",
+          "headers": [{ "key": "Content-Type", "value": "application/wasm" }]
+        }
+      ]
+    }
+  ]
 }

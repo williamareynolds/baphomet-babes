@@ -54,4 +54,4 @@ jobs:
               GCP_PROJECT_ID=$PROJECT_ID,\
               JWT_SECRET=${{ secrets.JWT_SECRET }},\
               SUPERADMIN_INVITE_CODE=${{ secrets.SUPERADMIN_INVITE_CODE }},\
-              ALLOWED_ORIGIN=https://movienight.baphometbabes.com"
+              ALLOWED_ORIGINS=https://baphometbabes.com\,https://movienight.baphometbabes.com"

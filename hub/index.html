@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
-    <title>Movie Night</title>
+    <title>Baphomet Babes</title>
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -108,6 +108,61 @@
         box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.025);
       }
 
+      a.app-card {
+        display: block;
+        background: #130e18;
+        border: 1px solid rgba(196, 30, 58, 0.15);
+        border-radius: 4px;
+        padding: 1.75rem;
+        text-decoration: none;
+        color: inherit;
+        transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+      }
+
+      a.app-card:hover {
+        border-color: rgba(196, 30, 58, 0.45);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(196, 30, 58, 0.12);
+        transform: translateY(-2px);
+      }
+
+      a.app-card .app-label {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.6rem;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: #c41e3a;
+        margin-bottom: 0.5rem;
+      }
+
+      a.app-card .app-name {
+        font-family: 'Bebas Neue', sans-serif;
+        font-size: 2rem;
+        letter-spacing: 0.06em;
+        color: #e2d8d0;
+        line-height: 1;
+        margin-bottom: 0.6rem;
+      }
+
+      a.app-card .app-desc {
+        color: #6a5a6a;
+        font-size: 1rem;
+        line-height: 1.55;
+      }
+
+      a.app-card .app-arrow {
+        display: inline-block;
+        margin-top: 1rem;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.65rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: #4a3a5a;
+        transition: color 0.2s;
+      }
+
+      a.app-card:hover .app-arrow { color: #c41e3a; }
+
       .badge {
         display: inline-block;
         padding: 3px 9px;
@@ -120,71 +175,11 @@
       }
 
       .badge-main { background: #c41e3a; color: #fff; }
-      .badge-special { background: transparent; border: 1px solid #4a3a6e; color: #9a80c0; }
 
-      input, select, textarea {
-        width: 100%;
-        padding: 0.6rem 0.75rem;
-        margin: 0.2rem 0 0.875rem;
-        background: #0c0a0e;
-        border: 1px solid #251e2c;
-        border-radius: 3px;
-        color: #e2d8d0;
-        font-family: 'Crimson Pro', Georgia, serif;
-        font-size: 1rem;
-        transition: border-color 0.2s, box-shadow 0.2s;
-        -webkit-appearance: none;
-      }
-
-      input:focus, select:focus, textarea:focus {
-        outline: none;
-        border-color: rgba(196, 30, 58, 0.5);
-        box-shadow: 0 0 0 2px rgba(196, 30, 58, 0.08);
-      }
-
-      select option { background: #130e18; }
-
-      button {
-        padding: 0.55rem 1.4rem;
-        background: #c41e3a;
-        color: #fff;
-        border: none;
-        border-radius: 3px;
-        cursor: pointer;
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.7rem;
-        font-weight: 600;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        transition: background 0.2s, transform 0.1s, box-shadow 0.2s;
-      }
-
-      button:hover {
-        background: #a01830;
-        transform: translateY(-1px);
-        box-shadow: 0 4px 14px rgba(196, 30, 58, 0.35);
-      }
-
-      button:active { transform: translateY(0); box-shadow: none; }
-
-      button.secondary {
-        background: transparent;
-        border: 1px solid #2a2035;
-        color: #8a7a8a;
-      }
-
-      button.secondary:hover {
-        background: #1a1220;
-        border-color: #4a3a5e;
-        color: #e2d8d0;
-        box-shadow: none;
-        transform: translateY(-1px);
-      }
-
-      button:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
-
-      .error { color: #d97070; margin: 0.5rem 0; font-size: 0.95rem; font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; }
-      .success { color: #7ac09a; margin: 0.5rem 0; font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; }
+      p { line-height: 1.6; }
+      strong { font-weight: 600; }
+      code { font-family: 'IBM Plex Mono', monospace; }
+      small { font-family: 'IBM Plex Mono', monospace; font-size: 0.7rem; }
 
       label {
         display: block;
@@ -194,18 +189,6 @@
         text-transform: uppercase;
         color: #5a4a5a;
       }
-
-      form { max-width: 480px; }
-
-      code { font-family: 'IBM Plex Mono', monospace; }
-
-      small { font-family: 'IBM Plex Mono', monospace; font-size: 0.7rem; }
-
-      p { line-height: 1.6; }
-
-      strong { font-weight: 600; }
-
-      iframe { border-radius: 4px; }
     </style>
   </head>
   <body></body>

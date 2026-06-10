@@ -1,5 +1,13 @@
 {
   "projects": {
     "default": "baphomet-babes"
+  },
+  "targets": {
+    "baphomet-babes": {
+      "hosting": {
+        "hub": ["baphomet-babes"],
+        "movienight": ["baphomet-babes-movienight"]
+      }
+    }
   }
 }

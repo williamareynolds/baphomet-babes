@@ -1,13 +1,12 @@
-name: Deploy Movie Night
+name: Deploy Hub
 
 on:
   push:
     branches: [main]
     paths:
-      - "frontend/**"
-      - "shared/**"
+      - "hub/**"
       - "firebase.json"
-      - ".github/workflows/deploy-frontend.yml"
+      - ".github/workflows/deploy-hub.yml"
 
 jobs:
   deploy:
@@ -27,7 +26,7 @@ jobs:
         run: cargo install trunk
 
       - name: Build
-        working-directory: frontend
+        working-directory: hub
         run: trunk build --release
 
       - name: Deploy to Firebase Hosting
@@ -36,5 +35,5 @@ jobs:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           channelId: live
-          target: movienight
+          target: hub
           projectId: ${{ vars.GCP_PROJECT_ID }}

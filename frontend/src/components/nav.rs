@@ -12,7 +12,7 @@ pub fn Nav(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     view! {
         <nav>
             <A href="/" attr:class="nav-brand">"Baphomet Babes"</A>
-            <A href="/about">"About"</A>
+            <a href="https://baphometbabes.com/about">"About"</a>
             <Show when=move || auth.get().is_some()>
                 <A href="/vote">"Vote"</A>
                 <A href="/history">"History"</A>
