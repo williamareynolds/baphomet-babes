@@ -1,5 +1,7 @@
 FROM rust:1.96-slim AS builder
-RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+# cmake is required to build aws-lc-rs (pulled in via reqwest -> hyper-rustls);
+# pkg-config/libssl-dev for the existing native deps.
+RUN apt-get update && apt-get install -y pkg-config libssl-dev cmake && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY . .
 RUN cargo build --release -p backend
