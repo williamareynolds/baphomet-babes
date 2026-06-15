@@ -4,4 +4,4 @@ pub use shared::{AuthUser, CookieIdentity};
 mod wasm;
 
 #[cfg(target_arch = "wasm32")]
-pub use wasm::{clear_auth, load_auth, load_identity, save_auth};
+pub use wasm::{app_check_token, clear_auth, load_auth, load_identity, save_auth};

@@ -1,6 +1,25 @@
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::wasm_bindgen;
 use shared::{AuthUser, CookieIdentity};
+
+#[wasm_bindgen]
+extern "C" {
+    // Defined by the App Check bootstrap in index.html. Returns a Promise<string>
+    // (a fresh attestation token) in production, and resolves to null in local
+    // dev where Firebase isn't initialized. `catch` turns a missing bridge into
+    // an Err rather than a hard panic.
+    #[wasm_bindgen(js_namespace = window, js_name = __appCheckToken, catch)]
+    async fn js_app_check_token() -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsValue>;
+}
+
+/// Fresh Firebase App Check token for this app instance, or `None` when the
+/// bridge is absent (local dev) or minting fails. Callers attach it as the
+/// `X-Firebase-AppCheck` header; `None` means no header, which is correct for
+/// environments where the backend isn't enforcing App Check.
+pub async fn app_check_token() -> Option<String> {
+    js_app_check_token().await.ok().and_then(|v| v.as_string())
+}
 
 /// Save auth: JWT → localStorage (this domain only), identity → cross-domain cookie (no JWT).
 pub fn save_auth(user: &AuthUser) {

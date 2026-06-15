@@ -82,6 +82,15 @@ test-e2e:
 
 test-all: test test-integration test-e2e
 
+# Firestore security rules — default-deny (backend SA bypasses; clients blocked).
+deploy-firestore-rules:
+    firebase deploy --only firestore:rules --project baphomet-babes
+
+# Billing kill-switch — hard $30/mo spend cap (disables billing on overrun).
+# Idempotent; re-run after editing infra/billing-killswitch/main.py to redeploy.
+setup-killswitch:
+    infra/billing-killswitch/setup.sh
+
 # Deploy (CI handles this; use for manual deploys)
 deploy-hub: build-hub
     firebase deploy --only hosting:hub

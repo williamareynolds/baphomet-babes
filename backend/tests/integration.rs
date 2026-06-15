@@ -31,6 +31,7 @@ async fn test_app(name: &str) -> Router {
         db,
         jwt_secret: JWT_SECRET.into(),
         superadmin_invite_code: BOOTSTRAP.into(),
+        app_check: None,
     };
     // Effectively unlimited so functional tests never trip the governor.
     build_app(state, None, RateLimit { per_second: 1, burst: 1_000_000 })
@@ -358,6 +359,7 @@ async fn rate_limiter_returns_json_429() {
         db,
         jwt_secret: JWT_SECRET.into(),
         superadmin_invite_code: BOOTSTRAP.into(),
+        app_check: None,
     };
     let app = build_app(state, None, RateLimit { per_second: 1, burst: 2 });
 
@@ -395,6 +397,7 @@ async fn cors_allows_configured_origin_only() {
         db,
         jwt_secret: JWT_SECRET.into(),
         superadmin_invite_code: BOOTSTRAP.into(),
+        app_check: None,
     };
     let app = build_app(
         state,
@@ -420,4 +423,54 @@ async fn cors_allows_configured_origin_only() {
 
     let resp = app.clone().oneshot(preflight("https://evil.example")).await.unwrap();
     assert!(resp.headers().get("access-control-allow-origin").is_none());
+}
+
+/// With App Check enforcement ON, anything that didn't come from our attested
+/// frontend (curl, bots, scripts) is rejected before reaching a handler — even
+/// with a perfectly valid JWT. This is the core anti-abuse guarantee.
+#[tokio::test]
+async fn app_check_blocks_direct_api_access() {
+    if !emulator_available() { return; }
+    let project = format!("bb-test-appcheck-{}", std::process::id());
+    let db = FirestoreDb::new(&project).await.expect("emulator connection");
+    let state = AppState {
+        db,
+        jwt_secret: JWT_SECRET.into(),
+        superadmin_invite_code: BOOTSTRAP.into(),
+        // Real verifier pointed at our project number. Bogus/missing tokens are
+        // rejected without ever contacting Google's JWKS endpoint, so this test
+        // needs no network.
+        app_check: Some(backend::app_check::AppCheck::new("780823612423")),
+    };
+    let app = build_app(state, None, RateLimit { per_second: 1, burst: 1_000_000 });
+
+    // Health is exempt — Cloud Run liveness probes carry no token.
+    let (status, _) = send(&app, req("GET", "/health", None, None)).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // No App Check header → blocked before the handler runs.
+    let (status, body) = send(&app, req("POST", "/auth/login", None, Some(json!({
+        "email": "x@test.com", "password": "x"
+    })))).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(body["error"], "missing app check token");
+
+    // Garbage App Check token → rejected at verification.
+    let bogus = Request::builder()
+        .method("POST")
+        .uri("/auth/login")
+        .header("Content-Type", "application/json")
+        .header("x-forwarded-for", "10.1.2.3")
+        .header("x-firebase-appcheck", "not.a.valid.token")
+        .body(Body::from(json!({ "email": "x@test.com", "password": "x" }).to_string()))
+        .unwrap();
+    let (status, body) = send(&app, bogus).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(body["error"], "app check verification failed");
+
+    // A genuine, valid JWT does NOT bypass App Check on a protected route —
+    // proves the gate sits in front of auth, not behind it.
+    let token = backend::auth::create_token("u", "superadmin", JWT_SECRET).unwrap();
+    let (status, _) = send(&app, req("GET", "/members", Some(&token), None)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
 }

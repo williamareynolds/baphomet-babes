@@ -17,11 +17,23 @@ async fn main() {
     let superadmin_invite_code = std::env::var("SUPERADMIN_INVITE_CODE").expect("SUPERADMIN_INVITE_CODE required");
     let allowed_origins = std::env::var("ALLOWED_ORIGINS").ok();
 
+    // App Check enforcement is opt-in. Leave it off until token-sending
+    // frontends are deployed and confirmed, then set APP_CHECK_ENFORCE=true.
+    let app_check = std::env::var("APP_CHECK_ENFORCE")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false)
+        .then(|| {
+            let pn = std::env::var("APP_CHECK_PROJECT_NUMBER")
+                .expect("APP_CHECK_PROJECT_NUMBER required when APP_CHECK_ENFORCE=true");
+            tracing::info!("App Check enforcement ENABLED for project {pn}");
+            backend::app_check::AppCheck::new(pn)
+        });
+
     let db = FirestoreDb::new(&gcp_project)
         .await
         .expect("failed to connect to Firestore");
 
-    let state = AppState { db, jwt_secret, superadmin_invite_code };
+    let state = AppState { db, jwt_secret, superadmin_invite_code, app_check };
     let app = build_app(state, allowed_origins.as_deref(), RateLimit::default());
 
     let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());

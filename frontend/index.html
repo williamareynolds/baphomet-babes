@@ -207,6 +207,54 @@
 
       iframe { border-radius: 4px; }
     </style>
+
+    <!-- Firebase App Check: attests this app so the backend can reject traffic
+         that didn't originate from a genuine page load. All values here are
+         public (safe to ship). Fill firebaseConfig + SITE_KEY at rollout — see
+         infra/app-check/README.md. -->
+    <script type="module">
+      // Default: no token (local dev / pre-rollout). The backend leaves App
+      // Check unenforced there, so requests still succeed.
+      window.__appCheckToken = async () => null;
+
+      if (location.hostname.endsWith("baphometbabes.com")) {
+        try {
+          const { initializeApp } = await import(
+            "https://www.gstatic.com/firebasejs/11.1.0/firebase-app.js"
+          );
+          const { initializeAppCheck, ReCaptchaV3Provider, getToken } =
+            await import(
+              "https://www.gstatic.com/firebasejs/11.1.0/firebase-app-check.js"
+            );
+
+          const firebaseConfig = {
+            apiKey: "AIzaSyCvALBMnTPVeeips_paWMxFW4N0-wEfBOo",
+            authDomain: "baphomet-babes.firebaseapp.com",
+            projectId: "baphomet-babes",
+            appId: "1:780823612423:web:6b2d7ef8e990effe076ea2",
+          };
+          // FILL AT ROLLOUT — reCAPTCHA v3 SITE key (public). The secret key is
+          // never used here; it goes only in Firebase Console App Check setup.
+          const SITE_KEY = "6LcDayEtAAAAAGC8t5vC-mP0MV-2hJBMqoVTf6Da";
+
+          const app = initializeApp(firebaseConfig);
+          const appCheck = initializeAppCheck(app, {
+            provider: new ReCaptchaV3Provider(SITE_KEY),
+            isTokenAutoRefreshEnabled: true,
+          });
+          window.__appCheckToken = async () => {
+            try {
+              return (await getToken(appCheck, false)).token;
+            } catch (e) {
+              console.error("App Check token error:", e);
+              return null;
+            }
+          };
+        } catch (e) {
+          console.error("App Check init failed:", e);
+        }
+      }
+    </script>
   </head>
   <body></body>
 </html>

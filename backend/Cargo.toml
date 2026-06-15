@@ -19,6 +19,7 @@ anyhow = "1"
 thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 shared = { path = "../shared" }
 
 [dev-dependencies]
@@ -27,3 +28,5 @@ tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 hyper = "1"
 base64 = "0.22"
+rsa = "0.9"
+rand = "0.8"

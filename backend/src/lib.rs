@@ -1,3 +1,4 @@
+pub mod app_check;
 pub mod auth;
 pub mod error;
 pub mod models;
@@ -9,11 +10,16 @@ use firestore::FirestoreDb;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder, key_extractor::SmartIpKeyExtractor};
 
+use app_check::AppCheck;
+
 #[derive(Clone)]
 pub struct AppState {
     pub db: FirestoreDb,
     pub jwt_secret: String,
     pub superadmin_invite_code: String,
+    /// When present, every non-health request must carry a valid App Check
+    /// token. `None` disables enforcement (dev, tests, pre-rollout).
+    pub app_check: Option<AppCheck>,
 }
 
 /// Rate limit knobs — relaxed in tests, strict in production.
@@ -82,6 +88,11 @@ pub fn build_app(state: AppState, allowed_origins: Option<&str>, rate_limit: Rat
         (status, axum::Json(shared::ErrorResponse { error: msg })).into_response()
     });
 
+    // App Check runs inside CORS (so preflight is handled first) but outside the
+    // route handlers, gating everything except /health when enforcement is on.
+    let app_check_layer =
+        axum::middleware::from_fn_with_state(state.clone(), app_check::middleware);
+
     Router::new()
         .route("/health", get(|| async { "ok" }))
         .nest("/auth", routes::auth::router().layer(governor_layer))
@@ -89,6 +100,7 @@ pub fn build_app(state: AppState, allowed_origins: Option<&str>, rate_limit: Rat
         .nest("/invites", routes::invites::router())
         .nest("/profile", routes::profile::profile_router())
         .nest("/members", routes::profile::members_router())
+        .layer(app_check_layer)
         .with_state(state)
         .layer(cors)
 }

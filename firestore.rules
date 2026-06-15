@@ -1,0 +1,14 @@
+rules_version = '2';
+
+// Hard default-deny. All Firestore data is read and written exclusively by the
+// backend service (Admin SDK via the service account), which bypasses these
+// rules entirely. No client — web, mobile, or otherwise — is permitted to touch
+// the database directly. This closes the door on any cost/abuse vector from
+// direct client SDK access.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

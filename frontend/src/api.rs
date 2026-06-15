@@ -10,9 +10,22 @@ pub const API_BASE: &str = "https://movie-night-api-r6vuubbgla-uc.a.run.app";
 #[cfg(not(feature = "production"))]
 pub const API_BASE: &str = "http://localhost:8080";
 
+/// Attach the Firebase App Check token when one is available. Absent in dev, so
+/// this is a no-op there; in production every backend call carries it.
+async fn attach_app_check(
+    req: gloo_net::http::RequestBuilder,
+) -> gloo_net::http::RequestBuilder {
+    match auth_client::app_check_token().await {
+        Some(t) => req.header("X-Firebase-AppCheck", &t),
+        None => req,
+    }
+}
+
 async fn get<T: serde::de::DeserializeOwned>(path: &str, token: &str) -> Result<T, String> {
-    let resp = gloo_net::http::Request::get(&format!("{API_BASE}{path}"))
-        .header("Authorization", &format!("Bearer {token}"))
+    let req = gloo_net::http::Request::get(&format!("{API_BASE}{path}"))
+        .header("Authorization", &format!("Bearer {token}"));
+    let resp = attach_app_check(req)
+        .await
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -33,7 +46,8 @@ async fn post_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(
     if let Some(t) = token {
         req = req.header("Authorization", &format!("Bearer {t}"));
     }
-    let resp = req
+    let resp = attach_app_check(req)
+        .await
         .json(body)
         .map_err(|e| e.to_string())?
         .send()
@@ -52,9 +66,11 @@ async fn put_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(
     body: &B,
     token: &str,
 ) -> Result<T, String> {
-    let resp = gloo_net::http::Request::put(&format!("{API_BASE}{path}"))
+    let req = gloo_net::http::Request::put(&format!("{API_BASE}{path}"))
         .header("Content-Type", "application/json")
-        .header("Authorization", &format!("Bearer {token}"))
+        .header("Authorization", &format!("Bearer {token}"));
+    let resp = attach_app_check(req)
+        .await
         .json(body)
         .map_err(|e| e.to_string())?
         .send()
@@ -68,8 +84,10 @@ async fn put_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(
 }
 
 async fn delete(path: &str, token: &str) -> Result<(), String> {
-    let resp = gloo_net::http::Request::delete(&format!("{API_BASE}{path}"))
-        .header("Authorization", &format!("Bearer {token}"))
+    let req = gloo_net::http::Request::delete(&format!("{API_BASE}{path}"))
+        .header("Authorization", &format!("Bearer {token}"));
+    let resp = attach_app_check(req)
+        .await
         .send()
         .await
         .map_err(|e| e.to_string())?;
