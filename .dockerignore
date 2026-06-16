@@ -1,5 +1,7 @@
 target/
-dist/
-frontend/
+**/dist/
+**/node_modules/
 .git/
 .env
+.env.*
+e2e/
