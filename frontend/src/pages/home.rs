@@ -2,6 +2,7 @@ use auth_client::AuthUser;
 use crate::api;
 use leptos::prelude::*;
 use leptos_router::components::A;
+use thaw::{Button, ButtonAppearance, Card};
 
 #[component]
 pub fn HomePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
@@ -49,25 +50,26 @@ pub fn HomePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                         view! {
                                             <div>
                                                 {upcoming.into_iter().map(|e| view! {
-                                                    <div class="card">
+                                                    <Card>
                                                         <span class={format!("badge badge-{}", e.event_type)}>
                                                             {if e.event_type == "main" { "Main Event" } else { "Special Feature" }}
                                                         </span>
                                                         {e.poster_url.map(|url| view! {
-                                                            <div style="text-align:center;margin:1rem 0;">
-                                                                <img src={url} alt="movie poster"
-                                                                    style="width:100%;max-width:500px;border-radius:6px;" />
+                                                            <div class="poster-wrap">
+                                                                <img src={url} alt="movie poster" class="poster" />
                                                             </div>
                                                         })}
                                                         <h2 style="margin-top:0.5rem;">{e.title}</h2>
-                                                        <p style="color:#aaa;">{e.date}</p>
+                                                        <p class="event-date">{e.date}</p>
                                                         {e.description.map(|d| view! { <p style="margin-top:0.5rem;">{d}</p> })}
                                                         {e.poll_embed_url.map(|_| view! {
-                                                            <A href="/vote">
-                                                                <button style="margin-top:0.75rem;">"Vote on Date →"</button>
-                                                            </A>
+                                                            <div style="margin-top:0.75rem;">
+                                                                <A href="/vote">
+                                                                    <Button appearance=ButtonAppearance::Primary>"Vote on Date →"</Button>
+                                                                </A>
+                                                            </div>
                                                         })}
-                                                    </div>
+                                                    </Card>
                                                 }).collect::<Vec<_>>()}
                                             </div>
                                         }.into_any()
@@ -78,9 +80,9 @@ pub fn HomePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                     }
                 }
             >
-                <div class="card">
+                <Card>
                     <p>"Please "<A href="/login">"log in"</A>" to see upcoming events."</p>
-                </div>
+                </Card>
             </Show>
         </main>
     }

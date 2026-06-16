@@ -35,12 +35,12 @@ pub fn VotePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                         }.into_any(),
                         Some(Ok(Some(event))) => view! {
                             <div>
-                                <p style="margin-bottom:1rem;color:#aaa;">
+                                <p class="event-date" style="margin-bottom:1rem;">
                                     "Voting for: "<strong>{event.title}</strong>
                                 </p>
                                 <iframe
                                     src={event.poll_embed_url.unwrap_or_default()}
-                                    style="width:100%;height:700px;border:none;border-radius:8px;"
+                                    class="poll-frame"
                                 />
                             </div>
                         }.into_any(),

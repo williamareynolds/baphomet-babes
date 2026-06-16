@@ -2,6 +2,11 @@ use auth_client::{AuthUser, clear_auth};
 use leptos::prelude::*;
 use leptos_router::components::A;
 
+/// Top navigation bar. This is bespoke "chrome" rather than a Thaw component
+/// (Thaw's NavDrawer is a vertical sidebar), but it is styled entirely from the
+/// theme tokens / fonts defined in `index.html` so it stays consistent with the
+/// Thaw-driven pages. The sticky header is safe-area-aware so page content can
+/// never peek above it on notched iPhones.
 #[component]
 pub fn Nav(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let logout = move |_| {
@@ -10,7 +15,7 @@ pub fn Nav(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     };
 
     view! {
-        <nav>
+        <nav class="site-nav">
             <A href="/" attr:class="nav-brand">"Baphomet Babes"</A>
             <a href="https://baphometbabes.com/about">"About"</a>
             <Show when=move || auth.get().is_some()>
@@ -19,9 +24,7 @@ pub fn Nav(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                 <Show when=move || auth.get().map(|u| u.is_admin()).unwrap_or(false)>
                     <A href="/admin">"Admin"</A>
                 </Show>
-                <button class="secondary" on:click=logout style="padding:0.25rem 0.75rem;font-size:0.85rem;">
-                    "Logout"
-                </button>
+                <button class="nav-link-btn" on:click=logout>"Logout"</button>
             </Show>
             <Show when=move || auth.get().is_none()>
                 <A href="/login">"Login"</A>

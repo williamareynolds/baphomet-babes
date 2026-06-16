@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0c0a0e" />
     <link rel="manifest" href="/public/manifest.json" />
     <link data-trunk rel="copy-dir" href="public"/>
@@ -35,21 +35,33 @@
         z-index: 1000;
       }
 
-      nav {
+      /* The ConfigProvider wrapper is our full-height app shell. */
+      .app-shell { min-height: 100dvh; }
+
+      /* Top nav. Bespoke chrome, themed to match the Thaw pages. Padding uses
+         env(safe-area-inset-*) so content can never peek above the sticky bar
+         on notched iPhones (the "body above navbar" bug), and so the bar isn't
+         tucked under the Dynamic Island / rounded corners. */
+      .site-nav {
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 1.5rem;
         background: rgba(12, 10, 14, 0.97);
         backdrop-filter: blur(12px);
         -webkit-backdrop-filter: blur(12px);
         border-bottom: 1px solid rgba(196, 30, 58, 0.2);
-        padding: 0.9rem 2rem;
-        display: flex;
-        gap: 1.75rem;
-        align-items: center;
-        position: sticky;
-        top: 0;
-        z-index: 100;
+        padding: 0.9rem clamp(1rem, 4vw, 2rem);
+        padding-top: max(0.9rem, env(safe-area-inset-top));
+        padding-left: max(clamp(1rem, 4vw, 2rem), env(safe-area-inset-left));
+        padding-right: max(clamp(1rem, 4vw, 2rem), env(safe-area-inset-right));
       }
 
-      nav a {
+      .site-nav a,
+      .site-nav .nav-link-btn {
         color: #8a7a7a;
         text-decoration: none;
         font-family: 'IBM Plex Mono', monospace;
@@ -59,21 +71,38 @@
         transition: color 0.2s;
       }
 
-      nav a:hover { color: #e2d8d0; text-decoration: none; }
+      .site-nav a:hover,
+      .site-nav .nav-link-btn:hover { color: #e2d8d0; }
 
-      nav a.nav-brand {
+      /* Logout: a real <button> for the click handler, styled as a nav link. */
+      .nav-link-btn {
+        background: none;
+        border: none;
+        padding: 0;
+        cursor: pointer;
+      }
+
+      .site-nav .nav-brand {
         font-family: 'Bebas Neue', sans-serif;
         font-size: 1.5rem;
         letter-spacing: 0.1em;
-        color: #c41e3a !important;
+        color: #c41e3a;
         text-transform: none;
         line-height: 1;
-        transition: color 0.2s !important;
+        margin-right: auto; /* push the rest of the nav to the right */
       }
 
-      nav a.nav-brand:hover { color: #e0253f !important; }
+      .site-nav .nav-brand:hover { color: #e0253f; }
 
-      main { padding: 3rem 2rem; max-width: 1100px; width: 100%; margin: 0 auto; }
+      main {
+        padding: 3rem clamp(1rem, 4vw, 2rem);
+        padding-left: max(clamp(1rem, 4vw, 2rem), env(safe-area-inset-left));
+        padding-right: max(clamp(1rem, 4vw, 2rem), env(safe-area-inset-right));
+        padding-bottom: max(3rem, env(safe-area-inset-bottom));
+        max-width: 1100px;
+        width: 100%;
+        margin: 0 auto;
+      }
 
       h1 {
         font-family: 'Bebas Neue', sans-serif;
@@ -101,15 +130,7 @@
         margin-bottom: 1rem;
       }
 
-      .card {
-        background: #130e18;
-        border: 1px solid rgba(196, 30, 58, 0.15);
-        border-radius: 4px;
-        padding: 1.5rem;
-        margin-bottom: 1.25rem;
-        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.025);
-      }
-
+      /* ---- Decorative badges (kept custom: Thaw has no themed equivalent) ---- */
       .badge {
         display: inline-block;
         padding: 3px 9px;
@@ -124,80 +145,69 @@
       .badge-main { background: #c41e3a; color: #fff; }
       .badge-special { background: transparent; border: 1px solid #4a3a6e; color: #9a80c0; }
 
-      input, select, textarea {
-        width: 100%;
-        padding: 0.6rem 0.75rem;
-        margin: 0.2rem 0 0.875rem;
-        background: #0c0a0e;
-        border: 1px solid #251e2c;
-        border-radius: 3px;
-        color: #e2d8d0;
-        font-family: 'Crimson Pro', Georgia, serif;
-        font-size: 1rem;
-        transition: border-color 0.2s, box-shadow 0.2s;
-        -webkit-appearance: none;
-      }
-
-      input:focus, select:focus, textarea:focus {
-        outline: none;
-        border-color: rgba(196, 30, 58, 0.5);
-        box-shadow: 0 0 0 2px rgba(196, 30, 58, 0.08);
-      }
-
-      select option { background: #130e18; }
-
-      button {
-        padding: 0.55rem 1.4rem;
-        background: #c41e3a;
-        color: #fff;
-        border: none;
-        border-radius: 3px;
-        cursor: pointer;
-        font-family: 'IBM Plex Mono', monospace;
-        font-size: 0.7rem;
-        font-weight: 600;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        transition: background 0.2s, transform 0.1s, box-shadow 0.2s;
-      }
-
-      button:hover {
-        background: #a01830;
-        transform: translateY(-1px);
-        box-shadow: 0 4px 14px rgba(196, 30, 58, 0.35);
-      }
-
-      button:active { transform: translateY(0); box-shadow: none; }
-
-      button.secondary {
-        background: transparent;
-        border: 1px solid #2a2035;
-        color: #8a7a8a;
-      }
-
-      button.secondary:hover {
-        background: #1a1220;
-        border-color: #4a3a5e;
-        color: #e2d8d0;
-        box-shadow: none;
-        transform: translateY(-1px);
-      }
-
-      button:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
-
-      .error { color: #d97070; margin: 0.5rem 0; font-size: 0.95rem; font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; }
+      /* ---- Page-level status messages (not field validation) ---- */
+      .error { color: #d97070; margin: 0.5rem 0; font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; }
       .success { color: #7ac09a; margin: 0.5rem 0; font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; }
 
-      label {
-        display: block;
+      form { max-width: 480px; }
+
+      /* =====================================================================
+         Thaw component overrides — push Fluent defaults toward the gothic look.
+         Colours/radii come from the theme tokens (see src/theme.rs); these
+         rules only adjust shape/spacing/typography the tokens don't cover.
+         ===================================================================== */
+
+      /* Buttons read as occult mono labels rather than Fluent sentence-case. */
+      .thaw-button {
+        font-family: 'IBM Plex Mono', monospace !important;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        font-size: 0.72rem !important;
+      }
+
+      /* Cards: fill the column and wear the signature red hairline + deep shadow. */
+      .thaw-card {
+        width: 100% !important;
+        margin: 0 0 1.25rem !important;
+        padding: 1.5rem !important;
+        border: 1px solid rgba(196, 30, 58, 0.15);
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.025) !important;
+      }
+
+      /* Field labels: tiny mono caps, matching the nav. */
+      .thaw-field label,
+      .thaw-field .thaw-label {
         font-family: 'IBM Plex Mono', monospace;
         font-size: 0.65rem;
         letter-spacing: 0.1em;
         text-transform: uppercase;
+      }
+      .thaw-field { margin-bottom: 0.875rem; }
+      /* Form controls span the form column like before. */
+      .thaw-input, .thaw-select, .thaw-textarea { width: 100%; }
+
+      /* ---- Page-specific helpers ---- */
+      .login-hint {
+        margin-top: 1.5rem;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.7rem;
         color: #5a4a5a;
       }
+      .login-hint a { color: #c41e3a; }
 
-      form { max-width: 480px; }
+      .section-heading { margin-top: 2rem; }
+
+      .event-date { color: #8a7a7a; }
+
+      .poster-wrap { text-align: center; margin: 1rem 0; }
+      .poster { width: 100%; max-width: 500px; border-radius: 6px; }
+
+      .poll-frame { width: 100%; height: 700px; border: none; border-radius: 8px; }
+
+      .admin-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+      .admin-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem; }
+      .poll-set { color: #7ac09a; font-size: 0.8rem; display: block; margin-top: 0.25rem; }
 
       code { font-family: 'IBM Plex Mono', monospace; }
 
@@ -229,18 +239,9 @@
         border-bottom: 1px solid rgba(196, 30, 58, 0.25);
       }
       .pwa-update { background: #c41e3a; color: #fff; }
-      .pwa-update button {
-        padding: 0.3rem 0.9rem;
-        font-size: 0.62rem;
-        background: #0c0a0e;
-        color: #fff;
-        border: 1px solid rgba(255, 255, 255, 0.35);
-      }
-      .pwa-update button:hover {
-        background: #1a1016;
-        transform: none;
-        box-shadow: none;
-      }
+      /* The update bar's button is a Thaw <Button> styled by the theme; only
+         nudge its min-width down so it sits comfortably in the slim bar. */
+      .pwa-update .thaw-button { min-width: 0; }
     </style>
 
     <!-- Register the service worker (offline shell + asset caching). -->

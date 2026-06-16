@@ -3,11 +3,12 @@ use crate::api;
 use leptos::prelude::*;
 use leptos_router::hooks::use_navigate;
 use shared::{AuthResponse, LoginRequest};
+use thaw::{Button, ButtonAppearance, ButtonType, Field, Input, InputType};
 
 #[component]
 pub fn LoginPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
-    let (email, set_email) = signal(String::new());
-    let (password, set_password) = signal(String::new());
+    let email = RwSignal::new(String::new());
+    let password = RwSignal::new(String::new());
     let (error, set_error) = signal(String::new());
     let (loading, set_loading) = signal(false);
     let (auth_response, set_auth_response) = signal(None::<AuthResponse>);
@@ -48,21 +49,24 @@ pub fn LoginPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                 <p class="error">{move || error.get()}</p>
             </Show>
             <form on:submit=handle_login>
-                <label>"Email"</label>
-                <input type="email" required
-                    prop:value=email
-                    on:input=move |e| set_email.set(event_target_value(&e)) />
-                <label>"Password"</label>
-                <input type="password" required
-                    prop:value=password
-                    on:input=move |e| set_password.set(event_target_value(&e)) />
-                <button type="submit" disabled=loading>
-                    {move || if loading.get() { "Logging in..." } else { "Login" }}
-                </button>
+                <Field label="Email">
+                    <Input value=email input_type=InputType::Email placeholder="you@example.com" />
+                </Field>
+                <Field label="Password">
+                    <Input value=password input_type=InputType::Password placeholder="••••••••" />
+                </Field>
+                <Button
+                    button_type=ButtonType::Submit
+                    appearance=ButtonAppearance::Primary
+                    loading=loading
+                    disabled=loading
+                >
+                    "Login"
+                </Button>
             </form>
-            <p style="margin-top:1.5rem;font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#4a3a5a;">
+            <p class="login-hint">
                 "New member? "
-                <a href="https://baphometbabes.com/login" style="color:#c41e3a;">"Register at baphometbabes.com"</a>
+                <a href="https://baphometbabes.com/login">"Register at baphometbabes.com"</a>
             </p>
         </main>
     }

@@ -3,6 +3,7 @@ mod app;
 mod components;
 mod pages;
 mod pwa;
+mod theme;
 
 use leptos::prelude::*;
 

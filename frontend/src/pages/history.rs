@@ -1,6 +1,7 @@
 use auth_client::AuthUser;
 use crate::api;
 use leptos::prelude::*;
+use thaw::Card;
 
 #[component]
 pub fn HistoryPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
@@ -49,20 +50,19 @@ pub fn HistoryPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                         view! {
                                             <div>
                                                 {past.into_iter().map(|e| view! {
-                                                    <div class="card">
+                                                    <Card>
                                                         <span class={format!("badge badge-{}", e.event_type)}>
                                                             {if e.event_type == "main" { "Main Event" } else { "Special Feature" }}
                                                         </span>
                                                         {e.poster_url.map(|url| view! {
-                                                            <div style="text-align:center;margin:1rem 0;">
-                                                                <img src={url} alt="movie poster"
-                                                                    style="width:100%;max-width:500px;border-radius:6px;" />
+                                                            <div class="poster-wrap">
+                                                                <img src={url} alt="movie poster" class="poster" />
                                                             </div>
                                                         })}
                                                         <h2 style="margin-top:0.5rem;">{e.title}</h2>
-                                                        <p style="color:#aaa;">{e.date}</p>
+                                                        <p class="event-date">{e.date}</p>
                                                         {e.description.map(|d| view! { <p style="margin-top:0.5rem;">{d}</p> })}
-                                                    </div>
+                                                    </Card>
                                                 }).collect::<Vec<_>>()}
                                             </div>
                                         }.into_any()
@@ -73,9 +73,9 @@ pub fn HistoryPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                     }
                 }
             >
-                <div class="card">
+                <Card>
                     <p>"Please log in to see past events."</p>
-                </div>
+                </Card>
             </Show>
         </main>
     }
