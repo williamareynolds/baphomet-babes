@@ -122,13 +122,22 @@ jobs:
         working-directory: e2e
         run: |
           set +e
+          # Playwright hangs on teardown: its webServers spawn grandchildren (the
+          # emulator's Java process, the cargo-run backend) that don't get killed
+          # and hold the step's stdout pipe open, so `npx playwright test` never
+          # returns. A background watchdog force-kills them well after the tests
+          # (which take well under a minute) have finished, letting teardown — and
+          # the step — complete. Test results are finalized before teardown, so
+          # the exit code still reflects pass/fail.
+          ( sleep 240
+            pkill -9 -f cloud_firestore_emulator
+            pkill -9 -f 'target/debug/backend'
+            pkill -9 -f 'trunk' ) &
+          watchdog=$!
           npx playwright test
           code=$?
-          # Playwright's webServers spawn grandchildren (the emulator's Java
-          # process, the cargo-run backend) that orphan on teardown and keep the
-          # step's stdout pipe open — the job then hangs after tests finish.
-          # Reap them so the pipe closes and the step exits.
-          pkill -f cloud_firestore_emulator || true
-          pkill -f 'target/debug/backend' || true
-          pkill -f 'trunk serve' || true
+          kill "$watchdog" 2>/dev/null
+          pkill -9 -f cloud_firestore_emulator || true
+          pkill -9 -f 'target/debug/backend' || true
+          pkill -9 -f 'trunk' || true
           exit $code
