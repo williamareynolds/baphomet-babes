@@ -118,31 +118,62 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
+      # Start each server in its own step with output redirected to a file, so
+      # their (orphaning) processes never hold the test step's stdout pipe. In CI
+      # Playwright is configured to REUSE these rather than spawn/teardown its
+      # own — so the test step exits cleanly with no teardown hang. The final
+      # step reaps them.
+      - name: Start Firestore emulator
+        run: |
+          nohup gcloud emulators firestore start --host-port=127.0.0.1:8790 --quiet \
+            > /tmp/emulator.log 2>&1 &
+          for i in $(seq 1 60); do
+            (echo > /dev/tcp/127.0.0.1/8790) 2>/dev/null && break
+            sleep 1
+          done
+          (echo > /dev/tcp/127.0.0.1/8790) 2>/dev/null \
+            || { echo "emulator failed to start"; cat /tmp/emulator.log; exit 1; }
+          echo "emulator up on :8790"
+
+      - name: Start backend
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8790
+          GCP_PROJECT_ID: bb-e2e
+          JWT_SECRET: e2e-test-secret
+          SUPERADMIN_INVITE_CODE: e2e-boot-code
+          RUST_LOG: info
+        run: |
+          nohup cargo run -p backend > /tmp/backend.log 2>&1 &
+          for i in $(seq 1 150); do
+            curl -sf http://localhost:8080/health >/dev/null && break
+            sleep 2
+          done
+          curl -sf http://localhost:8080/health >/dev/null \
+            || { echo "backend failed to start"; cat /tmp/backend.log; exit 1; }
+          echo "backend up on :8080"
+
+      - name: Start hub
+        working-directory: hub
+        run: |
+          nohup trunk serve > /tmp/trunk.log 2>&1 &
+          for i in $(seq 1 150); do
+            curl -sf http://localhost:3001 >/dev/null && break
+            sleep 2
+          done
+          curl -sf http://localhost:3001 >/dev/null \
+            || { echo "hub failed to start"; cat /tmp/trunk.log; exit 1; }
+          echo "hub up on :3001"
+
       - name: Run e2e tests
         working-directory: e2e
+        run: npx playwright test
+
+      - name: Stop background servers
+        if: always()
         run: |
-          set +e
-          # Playwright hangs on teardown: its webServers spawn grandchildren (the
-          # emulator's Java process, the cargo-run backend) that don't get killed
-          # and hold the step's stdout pipe open, so `npx playwright test` never
-          # returns. A background watchdog force-kills them well after the tests
-          # (which take well under a minute) have finished, letting teardown — and
-          # the step — complete. Test results are finalized before teardown, so
-          # the exit code still reflects pass/fail.
-          kill_servers() {
-            # The emulator is a Java process (a grandchild of gcloud); the
-            # backend is a grandchild of cargo. Match all of them.
-            pkill -9 -f cloud_firestore_emulator
-            pkill -9 -f firestore
-            pkill -9 java
-            pkill -9 -f 'target/debug/backend'
-            pkill -9 -f trunk
-            true
-          }
-          ( sleep 240; kill_servers ) &
-          watchdog=$!
-          npx playwright test
-          code=$?
-          kill "$watchdog" 2>/dev/null
-          kill_servers
-          exit $code
+          pkill -9 -f cloud_firestore_emulator || true
+          pkill -9 -f firestore || true
+          pkill -9 java || true
+          pkill -9 -f 'target/debug/backend' || true
+          pkill -9 -f trunk || true
+          true

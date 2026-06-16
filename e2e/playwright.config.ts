@@ -24,7 +24,9 @@ export default defineConfig({
       command:
         "gcloud emulators firestore start --host-port=127.0.0.1:8790 --quiet",
       port: 8790,
-      reuseExistingServer: false,
+      // In CI the servers run as separate workflow steps (so they can't hang
+      // Playwright's teardown); reuse them. Locally Playwright manages them.
+      reuseExistingServer: !!process.env.CI,
       timeout: 120_000,
       env: { PATH: `${JAVA_PATH}:${process.env.PATH}` },
     },
@@ -33,8 +35,9 @@ export default defineConfig({
       command: `bash -c '${WAIT_FOR_EMULATOR}; exec cargo run -p backend'`,
       url: "http://localhost:8080/health",
       cwd: "..",
-      // Never reuse: a dev backend on :8080 points at REAL Firestore.
-      reuseExistingServer: false,
+      // Reuse in CI (pre-started step). Locally never reuse: a dev backend on
+      // :8080 would point at REAL Firestore.
+      reuseExistingServer: !!process.env.CI,
       timeout: 300_000,
       env: {
         FIRESTORE_EMULATOR_HOST: "127.0.0.1:8790",
@@ -48,7 +51,7 @@ export default defineConfig({
       command: "trunk serve",
       url: "http://localhost:3001",
       cwd: "../hub",
-      reuseExistingServer: false,
+      reuseExistingServer: !!process.env.CI,
       timeout: 300_000,
     },
   ],
