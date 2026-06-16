@@ -166,80 +166,84 @@ pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                         <div>
                             {list.into_iter().map(|e| {
                                 let id = e.id.clone();
-                                let is_editing = {
-                                    let id = id.clone();
-                                    move || editing_id.get().as_deref() == Some(&id)
-                                };
+                                // The card body is a reactive closure so toggling
+                                // `editing_id` swaps display↔form in place. (Without
+                                // this it sits inside the events-only closure and
+                                // never re-renders — the Edit button looked dead.)
                                 view! {
                                     <Card>
-                                        {(!is_editing()).then(|| {
-                                            let e2 = e.clone();
-                                            let id2 = id.clone();
-                                            view! {
-                                                <div class="admin-row">
-                                                    <div>
-                                                        <span class={format!("badge badge-{}", e2.event_type)}>
-                                                            {e2.event_type.clone()}
-                                                        </span>
-                                                        <strong style="display:block;margin-top:0.25rem;">{e2.title.clone()}</strong>
-                                                        <small style="color:#bdafb2;">{e2.date.clone()}</small>
-                                                        {e2.poll_embed_url.clone().map(|_| view! {
-                                                            <span class="poll-set">"✓ poll set"</span>
-                                                        })}
-                                                        {e2.poster_url.clone().map(|url| view! {
-                                                            <img src={url} alt="poster"
-                                                                style="width:48px;height:72px;object-fit:cover;border-radius:2px;margin-top:0.4rem;display:block;" />
-                                                        })}
+                                        {move || {
+                                            let editing = editing_id.get().as_deref() == Some(id.as_str());
+                                            if editing {
+                                                view! {
+                                                    <form on:submit=handle_edit_submit>
+                                                        <Field label="Type">
+                                                            <Select value=edit_type>
+                                                                <option value="main">"Main Event"</option>
+                                                                <option value="special">"Special Feature"</option>
+                                                            </Select>
+                                                        </Field>
+                                                        <Field label="Title">
+                                                            <Input id="edit-title" value=edit_title />
+                                                        </Field>
+                                                        <Field label="Date">
+                                                            <Input value=edit_date input_type=InputType::Date />
+                                                        </Field>
+                                                        <Field label="Description (optional)">
+                                                            <Textarea value=edit_description />
+                                                        </Field>
+                                                        <Field label="Poll embed URL (optional)">
+                                                            <Input value=edit_poll_url input_type=InputType::Url placeholder="https://rcv123.org/poll/..." />
+                                                        </Field>
+                                                        <Field label="Poster image URL (optional)">
+                                                            <Input value=edit_poster_url input_type=InputType::Url placeholder="https://..." />
+                                                        </Field>
+                                                        <Show when=move || !edit_error.get().is_empty()>
+                                                            <p class="error">{move || edit_error.get()}</p>
+                                                        </Show>
+                                                        <div class="admin-actions">
+                                                            <Button button_type=ButtonType::Submit appearance=ButtonAppearance::Primary>"Save"</Button>
+                                                            <Button
+                                                                button_type=ButtonType::Button
+                                                                appearance=ButtonAppearance::Secondary
+                                                                on_click=move |_| editing_id.set(None)
+                                                            >"Cancel"</Button>
+                                                        </div>
+                                                    </form>
+                                                }.into_any()
+                                            } else {
+                                                let e2 = e.clone();
+                                                let id2 = id.clone();
+                                                view! {
+                                                    <div class="admin-row">
+                                                        <div>
+                                                            <span class={format!("badge badge-{}", e2.event_type)}>
+                                                                {e2.event_type.clone()}
+                                                            </span>
+                                                            <strong style="display:block;margin-top:0.25rem;">{e2.title.clone()}</strong>
+                                                            <small style="color:#bdafb2;">{e2.date.clone()}</small>
+                                                            {e2.poll_embed_url.clone().map(|_| view! {
+                                                                <span class="poll-set">"✓ poll set"</span>
+                                                            })}
+                                                            {e2.poster_url.clone().map(|url| view! {
+                                                                <img src={url} alt="poster"
+                                                                    style="width:48px;height:72px;object-fit:cover;border-radius:2px;margin-top:0.4rem;display:block;" />
+                                                            })}
+                                                        </div>
+                                                        <div class="admin-actions">
+                                                            <Button
+                                                                appearance=ButtonAppearance::Secondary
+                                                                on_click=move |_| handle_edit_start(e2.clone())
+                                                            >"Edit"</Button>
+                                                            <Button
+                                                                appearance=ButtonAppearance::Secondary
+                                                                on_click=move |_| handle_delete_event(id2.clone())
+                                                            >"Delete"</Button>
+                                                        </div>
                                                     </div>
-                                                    <div class="admin-actions">
-                                                        <Button
-                                                            appearance=ButtonAppearance::Secondary
-                                                            on_click=move |_| handle_edit_start(e2.clone())
-                                                        >"Edit"</Button>
-                                                        <Button
-                                                            appearance=ButtonAppearance::Secondary
-                                                            on_click=move |_| handle_delete_event(id2.clone())
-                                                        >"Delete"</Button>
-                                                    </div>
-                                                </div>
+                                                }.into_any()
                                             }
-                                        })}
-                                        {is_editing().then(|| view! {
-                                            <form on:submit=handle_edit_submit>
-                                                <Field label="Type">
-                                                    <Select value=edit_type>
-                                                        <option value="main">"Main Event"</option>
-                                                        <option value="special">"Special Feature"</option>
-                                                    </Select>
-                                                </Field>
-                                                <Field label="Title">
-                                                    <Input value=edit_title />
-                                                </Field>
-                                                <Field label="Date">
-                                                    <Input value=edit_date input_type=InputType::Date />
-                                                </Field>
-                                                <Field label="Description (optional)">
-                                                    <Textarea value=edit_description />
-                                                </Field>
-                                                <Field label="Poll embed URL (optional)">
-                                                    <Input value=edit_poll_url input_type=InputType::Url placeholder="https://rcv123.org/poll/..." />
-                                                </Field>
-                                                <Field label="Poster image URL (optional)">
-                                                    <Input value=edit_poster_url input_type=InputType::Url placeholder="https://..." />
-                                                </Field>
-                                                <Show when=move || !edit_error.get().is_empty()>
-                                                    <p class="error">{move || edit_error.get()}</p>
-                                                </Show>
-                                                <div class="admin-actions">
-                                                    <Button button_type=ButtonType::Submit appearance=ButtonAppearance::Primary>"Save"</Button>
-                                                    <Button
-                                                        button_type=ButtonType::Button
-                                                        appearance=ButtonAppearance::Secondary
-                                                        on_click=move |_| editing_id.set(None)
-                                                    >"Cancel"</Button>
-                                                </div>
-                                            </form>
-                                        })}
+                                        }}
                                     </Card>
                                 }
                             }).collect::<Vec<_>>()}
