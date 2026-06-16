@@ -155,6 +155,9 @@ jobs:
       - name: Start hub
         working-directory: hub
         run: |
+          # trunk is installed by cargo-binstall into ~/.cargo/bin, which isn't
+          # necessarily on PATH (the runner's pre-installed cargo is elsewhere).
+          export PATH="$HOME/.cargo/bin:$PATH"
           nohup trunk serve > /tmp/trunk.log 2>&1 &
           for i in $(seq 1 150); do
             curl -sf http://localhost:3001 >/dev/null && break
