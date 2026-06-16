@@ -96,6 +96,88 @@
       .site-nav .nav-brand:hover .brand-name { color: #fff; }
       .site-nav .nav-brand:hover .brand-accent { color: #e0253f; }
 
+      /* Link cluster. Inline on wide screens; collapses into a dropdown panel
+         behind the hamburger below the breakpoint (see @media at the end). */
+      .nav-links {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+        flex-wrap: wrap;
+      }
+
+      /* Hamburger toggle — three bars that morph into an X when open. Hidden on
+         wide screens where the links sit inline. */
+      .nav-toggle {
+        display: none;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 5px;
+        width: 2.25rem;
+        height: 2.25rem;
+        padding: 0;
+        background: none;
+        border: none;
+        cursor: pointer;
+      }
+      .nav-toggle span {
+        display: block;
+        width: 22px;
+        height: 2px;
+        border-radius: 2px;
+        background: #bdafb2;
+        transition: transform 0.25s ease, opacity 0.2s ease, background 0.2s ease;
+      }
+      .nav-toggle:hover span { background: #f3ebe3; }
+      .nav-toggle.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+      .nav-toggle.open span:nth-child(2) { opacity: 0; }
+      .nav-toggle.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+      @media (max-width: 720px) {
+        .nav-toggle { display: flex; }
+
+        /* Drop the links out of the bar into an overlay panel under it. */
+        .nav-links {
+          position: absolute;
+          top: 100%;
+          left: 0;
+          right: 0;
+          flex-direction: column;
+          align-items: stretch;
+          gap: 0;
+          background: rgba(9, 7, 11, 0.98);
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+          border-bottom: 1px solid rgba(196, 30, 58, 0.2);
+          box-shadow: 0 16px 32px rgba(0, 0, 0, 0.55);
+          padding: 0.25rem clamp(1rem, 4vw, 2rem) 0.75rem;
+          padding-left: max(clamp(1rem, 4vw, 2rem), env(safe-area-inset-left));
+          padding-right: max(clamp(1rem, 4vw, 2rem), env(safe-area-inset-right));
+          opacity: 0;
+          transform: translateY(-10px);
+          pointer-events: none;
+          transition: opacity 0.2s ease, transform 0.2s ease;
+        }
+        .nav-links.open {
+          opacity: 1;
+          transform: none;
+          pointer-events: auto;
+        }
+
+        /* Full-width rows with hairline separators; larger tap targets. */
+        .nav-links a,
+        .nav-links .nav-link-btn {
+          display: block;
+          width: 100%;
+          text-align: left;
+          padding: 0.9rem 0;
+          font-size: 0.78rem;
+          border-bottom: 1px solid rgba(196, 30, 58, 0.08);
+        }
+        .nav-links a:last-child,
+        .nav-links .nav-link-btn:last-child { border-bottom: none; }
+      }
+
       main {
         padding: 3rem clamp(1rem, 4vw, 2rem);
         padding-left: max(clamp(1rem, 4vw, 2rem), env(safe-area-inset-left));
