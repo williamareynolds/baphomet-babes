@@ -120,4 +120,15 @@ jobs:
 
       - name: Run e2e tests
         working-directory: e2e
-        run: npx playwright test
+        run: |
+          set +e
+          npx playwright test
+          code=$?
+          # Playwright's webServers spawn grandchildren (the emulator's Java
+          # process, the cargo-run backend) that orphan on teardown and keep the
+          # step's stdout pipe open — the job then hangs after tests finish.
+          # Reap them so the pipe closes and the step exits.
+          pkill -f cloud_firestore_emulator || true
+          pkill -f 'target/debug/backend' || true
+          pkill -f 'trunk serve' || true
+          exit $code
