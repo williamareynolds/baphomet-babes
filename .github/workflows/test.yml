@@ -129,15 +129,20 @@ jobs:
           # (which take well under a minute) have finished, letting teardown — and
           # the step — complete. Test results are finalized before teardown, so
           # the exit code still reflects pass/fail.
-          ( sleep 240
+          kill_servers() {
+            # The emulator is a Java process (a grandchild of gcloud); the
+            # backend is a grandchild of cargo. Match all of them.
             pkill -9 -f cloud_firestore_emulator
+            pkill -9 -f firestore
+            pkill -9 java
             pkill -9 -f 'target/debug/backend'
-            pkill -9 -f 'trunk' ) &
+            pkill -9 -f trunk
+            true
+          }
+          ( sleep 240; kill_servers ) &
           watchdog=$!
           npx playwright test
           code=$?
           kill "$watchdog" 2>/dev/null
-          pkill -9 -f cloud_firestore_emulator || true
-          pkill -9 -f 'target/debug/backend' || true
-          pkill -9 -f 'trunk' || true
+          kill_servers
           exit $code
