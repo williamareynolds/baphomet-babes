@@ -59,6 +59,13 @@ jobs:
           done
           grep "running" /tmp/firestore-emulator.log
 
+      # FirestoreDb::new resolves a GCP token source even when targeting the
+      # emulator. The emulator ignores the token, but the lookup must succeed —
+      # so provide credentials (mirrors local ADC).
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
       - name: Run integration tests
         env:
           FIRESTORE_EMULATOR_HOST: 127.0.0.1:8787
@@ -103,6 +110,13 @@ jobs:
         run: |
           npm ci
           npx playwright install --with-deps chromium
+
+      # The e2e backend binary uses FirestoreDb::new (default token source),
+      # which needs credentials even against the emulator. Emulator ignores the
+      # token; the lookup just has to succeed.
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Run e2e tests
         working-directory: e2e
