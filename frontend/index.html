@@ -6,6 +6,8 @@
     <meta name="theme-color" content="#0c0a0e" />
     <link rel="manifest" href="/public/manifest.json" />
     <link data-trunk rel="copy-dir" href="public"/>
+    <!-- Also place the service worker at the site root so its scope is "/". -->
+    <link data-trunk rel="copy-file" href="public/sw.js"/>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
@@ -206,7 +208,51 @@
       strong { font-weight: 600; }
 
       iframe { border-radius: 4px; }
+
+      .pwa-bar {
+        position: sticky;
+        top: 0;
+        z-index: 200;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 1rem;
+        padding: 0.55rem 1rem;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.72rem;
+        letter-spacing: 0.05em;
+        text-align: center;
+      }
+      .pwa-offline {
+        background: #241b2b;
+        color: #c9b6a6;
+        border-bottom: 1px solid rgba(196, 30, 58, 0.25);
+      }
+      .pwa-update { background: #c41e3a; color: #fff; }
+      .pwa-update button {
+        padding: 0.3rem 0.9rem;
+        font-size: 0.62rem;
+        background: #0c0a0e;
+        color: #fff;
+        border: 1px solid rgba(255, 255, 255, 0.35);
+      }
+      .pwa-update button:hover {
+        background: #1a1016;
+        transform: none;
+        box-shadow: none;
+      }
     </style>
+
+    <!-- Register the service worker (offline shell + asset caching). -->
+    <script>
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker
+            .register("/sw.js")
+            .catch((e) => console.error("SW registration failed:", e));
+        });
+      }
+    </script>
 
     <!-- Firebase App Check: attests this app so the backend can reject traffic
          that didn't originate from a genuine page load. All values here are

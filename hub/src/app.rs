@@ -1,4 +1,5 @@
 use auth_client::{AuthUser, clear_auth, load_auth};
+use crate::pwa::PwaBars;
 use crate::pages::{
     about::AboutPage,
     home::HomePage,
@@ -22,6 +23,7 @@ pub fn App() -> impl IntoView {
     };
 
     view! {
+        <PwaBars />
         <Router>
             <nav>
                 <A href="/" attr:class="nav-brand">

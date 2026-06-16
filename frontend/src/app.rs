@@ -2,6 +2,7 @@ use auth_client::{AuthUser, load_auth};
 use crate::{
     components::nav::Nav,
     pages::{admin::AdminPage, history::HistoryPage, home::HomePage, login::LoginPage, vote::VotePage},
+    pwa::PwaBars,
 };
 use leptos::prelude::*;
 use leptos_router::{
@@ -14,6 +15,7 @@ pub fn App() -> impl IntoView {
     let auth: RwSignal<Option<AuthUser>> = RwSignal::new(load_auth());
 
     view! {
+        <PwaBars />
         <Router>
             <Nav auth=auth />
             <Routes fallback=|| view! { <main><p>"Page not found."</p></main> }>

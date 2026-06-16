@@ -22,12 +22,12 @@ dev-movienight:
 dev-hub:
     cd hub && trunk serve
 
-# Build
+# Build (stamps the git SHA into the bundle + dist/version.json for update checks)
 build-hub:
-    cd hub && trunk build --release
+    cd hub && BUILD_SHA=$(git rev-parse HEAD) trunk build --release && echo "{\"version\":\"$(git rev-parse HEAD)\"}" > dist/version.json
 
 build-movienight:
-    cd frontend && trunk build --release
+    cd frontend && BUILD_SHA=$(git rev-parse HEAD) trunk build --release && echo "{\"version\":\"$(git rev-parse HEAD)\"}" > dist/version.json
 
 build-all: build-hub build-movienight
 

@@ -247,7 +247,12 @@ jobs:
 
       - name: Build
         working-directory: hub
-        run: trunk build --release
+        env:
+          BUILD_SHA: ${{ github.sha }}
+        run: |
+          trunk build --release
+          # Stamp the published version so deployed clients can detect updates.
+          echo "{\"version\":\"${BUILD_SHA}\"}" > dist/version.json
 
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
@@ -281,7 +286,12 @@ jobs:
 
       - name: Build
         working-directory: frontend
-        run: trunk build --release
+        env:
+          BUILD_SHA: ${{ github.sha }}
+        run: |
+          trunk build --release
+          # Stamp the published version so deployed clients can detect updates.
+          echo "{\"version\":\"${BUILD_SHA}\"}" > dist/version.json
 
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0

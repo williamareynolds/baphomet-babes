@@ -1348,6 +1348,7 @@ version = "0.1.0"
 dependencies = [
  "auth-client",
  "gloo-net",
+ "js-sys",
  "leptos",
  "leptos_router",
  "serde",
