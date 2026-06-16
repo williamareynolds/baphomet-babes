@@ -45,7 +45,6 @@ pub fn Nav(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
             <div class="nav-links" class:open=open on:click=close>
                 <A href="/about">"About"</A>
                 <Show when=move || auth.get().is_some()>
-                    <A href="/vote">"Vote"</A>
                     <A href="/history">"History"</A>
                     <A href="/members">"Members"</A>
                     <A href="/profile">"My Profile"</A>
