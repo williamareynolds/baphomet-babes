@@ -50,12 +50,12 @@ pub fn gothic_theme() -> Theme {
     c.color_neutral_background_static = "#0c0a0e".into();
 
     // --- Text. ---
-    c.color_neutral_foreground_1 = "#e2d8d0".into(); // primary copy
+    c.color_neutral_foreground_1 = "#f3ebe3".into(); // primary copy
     c.color_neutral_foreground_1_hover = "#f3ece6".into();
     c.color_neutral_foreground_1_pressed = "#f3ece6".into();
-    c.color_neutral_foreground_2 = "#cabcc0".into();
-    c.color_neutral_foreground_3 = "#8a7a7a".into(); // field labels / hints
-    c.color_neutral_foreground_4 = "#6a5a6a".into();
+    c.color_neutral_foreground_2 = "#d9cdc6".into();
+    c.color_neutral_foreground_3 = "#bdafb2".into(); // field labels / hints
+    c.color_neutral_foreground_4 = "#ad9ea4".into();
     c.color_neutral_foreground_on_brand = "#ffffff".into();
 
     // --- Strokes / borders: faint, purple-tinted to read as "old". ---
@@ -63,7 +63,7 @@ pub fn gothic_theme() -> Theme {
     c.color_neutral_stroke_1_hover = "#4a3a5e".into();
     c.color_neutral_stroke_1_pressed = "#3a2c4a".into();
     c.color_neutral_stroke_2 = "#251e2c".into();
-    c.color_neutral_stroke_accessible = "#6a5a6a".into();
+    c.color_neutral_stroke_accessible = "#ad9ea4".into();
 
     // --- Common: our font pairing + sharper, less "app-y" corners. ---
     let k = &mut theme.common;

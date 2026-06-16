@@ -95,7 +95,7 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                 <form on:submit=handle_save>
                     <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1.5rem;">
                         <Switch checked=is_public label="Public profile" />
-                        <span style="font-family:'IBM Plex Mono',monospace;font-size:0.6rem;color:#5a4a5a;">
+                        <span style="font-family:'IBM Plex Mono',monospace;font-size:0.6rem;color:#ad9ea4;">
                             {move || if is_public.get() { "visible in member directory" } else { "hidden from directory" }}
                         </span>
                     </div>

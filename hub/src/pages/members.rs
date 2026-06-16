@@ -30,13 +30,13 @@ pub fn MembersPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                 <p class="error">"Login required."</p>
             </Show>
             <Show when=move || loading.get() && auth.get().is_some()>
-                <p style="color:#4a3a5a;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;">"Loading..."</p>
+                <p style="color:#95868f;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;">"Loading..."</p>
             </Show>
             <Show when=move || !error.get().is_empty()>
                 <p class="error">{move || error.get()}</p>
             </Show>
             <Show when=move || !loading.get() && members.get().is_empty() && error.get().is_empty()>
-                <p style="color:#6a5a6a;">"No public member profiles yet."</p>
+                <p style="color:#ad9ea4;">"No public member profiles yet."</p>
             </Show>
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1rem;">
                 {move || members.get().into_iter().map(|m| {
@@ -51,24 +51,24 @@ pub fn MembersPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                         }.into_any()
                                     } else {
                                         view! {
-                                            <div style="width:40px;height:40px;border-radius:50%;background:#1e1526;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:1.2rem;color:#4a3a6a;">
+                                            <div style="width:40px;height:40px;border-radius:50%;background:#1e1526;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:1.2rem;color:#a48cc0;">
                                                 {m.username.chars().next().unwrap_or('?').to_uppercase().to_string()}
                                             </div>
                                         }.into_any()
                                     }}
                                     <div>
-                                        <div style="font-family:'Bebas Neue',sans-serif;font-size:1.1rem;color:#e2d8d0;letter-spacing:0.05em;">
+                                        <div style="font-family:'Bebas Neue',sans-serif;font-size:1.1rem;color:#f3ebe3;letter-spacing:0.05em;">
                                             {m.display_name.unwrap_or_else(|| m.username.clone())}
                                         </div>
                                         {m.pronouns.map(|p| view! {
-                                            <div style="font-family:'IBM Plex Mono',monospace;font-size:0.6rem;color:#4a3a5a;letter-spacing:0.1em;">{p}</div>
+                                            <div style="font-family:'IBM Plex Mono',monospace;font-size:0.6rem;color:#95868f;letter-spacing:0.1em;">{p}</div>
                                         })}
                                     </div>
                                 </div>
                                 {m.bio.map(|b| {
                                     let preview = if b.len() > 100 { format!("{}…", &b[..100]) } else { b };
                                     view! {
-                                        <p style="color:#6a5a6a;font-size:0.95rem;line-height:1.5;">{preview}</p>
+                                        <p style="color:#ad9ea4;font-size:0.95rem;line-height:1.5;">{preview}</p>
                                     }
                                 })}
                             </Card>
@@ -107,7 +107,7 @@ pub fn MemberProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                 <p class="error">{move || error.get()}</p>
             </Show>
             <Show when=move || profile.get().is_none() && error.get().is_empty()>
-                <p style="color:#4a3a5a;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;">"Loading..."</p>
+                <p style="color:#95868f;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;">"Loading..."</p>
             </Show>
             {move || profile.get().map(|p| {
                 let own_id = auth.get().map(|u| u.id).unwrap_or_default();
@@ -121,7 +121,7 @@ pub fn MemberProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                 }.into_any()
                             } else {
                                 view! {
-                                    <div style="width:72px;height:72px;border-radius:50%;background:#1e1526;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:2rem;color:#4a3a6a;flex-shrink:0;">
+                                    <div style="width:72px;height:72px;border-radius:50%;background:#1e1526;display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:2rem;color:#a48cc0;flex-shrink:0;">
                                         {p.username.chars().next().unwrap_or('?').to_uppercase().to_string()}
                                     </div>
                                 }.into_any()
@@ -131,16 +131,16 @@ pub fn MemberProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                     {p.display_name.clone().unwrap_or_else(|| p.username.clone())}
                                 </h1>
                                 {p.pronouns.clone().map(|pr| view! {
-                                    <p style="font-family:'IBM Plex Mono',monospace;font-size:0.65rem;letter-spacing:0.12em;color:#4a3a5a;text-transform:uppercase;">{pr}</p>
+                                    <p style="font-family:'IBM Plex Mono',monospace;font-size:0.65rem;letter-spacing:0.12em;color:#95868f;text-transform:uppercase;">{pr}</p>
                                 })}
                                 {p.email.clone().map(|e| view! {
-                                    <p style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#6a5a6a;margin-top:0.25rem;">{e}</p>
+                                    <p style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#ad9ea4;margin-top:0.25rem;">{e}</p>
                                 })}
                             </div>
                         </div>
 
                         {p.bio.clone().map(|b| view! {
-                            <p style="font-size:1.15rem;line-height:1.75;color:#9a8a8a;margin-bottom:1.75rem;">{b}</p>
+                            <p style="font-size:1.15rem;line-height:1.75;color:#ccbfc0;margin-bottom:1.75rem;">{b}</p>
                         })}
 
                         {if !p.links.is_empty() {
@@ -148,7 +148,7 @@ pub fn MemberProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                 <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:1.75rem;">
                                     {p.links.iter().map(|l| view! {
                                         <a href={l.url.clone()} target="_blank" rel="noopener noreferrer"
-                                           style="font-family:'IBM Plex Mono',monospace;font-size:0.65rem;letter-spacing:0.1em;text-transform:uppercase;color:#c41e3a;border:1px solid rgba(196,30,58,0.3);padding:4px 10px;border-radius:2px;text-decoration:none;">
+                                           style="font-family:'IBM Plex Mono',monospace;font-size:0.65rem;letter-spacing:0.1em;text-transform:uppercase;color:#ee4b61;border:1px solid rgba(196,30,58,0.3);padding:4px 10px;border-radius:2px;text-decoration:none;">
                                             {l.label.clone()}
                                         </a>
                                     }).collect::<Vec<_>>()}

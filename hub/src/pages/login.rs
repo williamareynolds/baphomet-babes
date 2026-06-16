@@ -73,19 +73,19 @@ pub fn LoginPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
          font-family:'IBM Plex Mono',monospace;font-size:0.62rem;letter-spacing:0.14em;\
          text-transform:uppercase;color:{};cursor:pointer;",
         if tab.get() == which { "#c41e3a" } else { "transparent" },
-        if tab.get() == which { "#e2d8d0" } else { "#6a5a6a" },
+        if tab.get() == which { "#f3ebe3" } else { "#ad9ea4" },
     );
 
     view! {
         <main style="max-width:460px;padding:4rem 2rem 6rem;">
-            <p style="font-family:'IBM Plex Mono',monospace;font-size:0.55rem;letter-spacing:0.35em;text-transform:uppercase;color:#5a4a5a;margin-bottom:0.5rem;">
+            <p style="font-family:'IBM Plex Mono',monospace;font-size:0.55rem;letter-spacing:0.35em;text-transform:uppercase;color:#ad9ea4;margin-bottom:0.5rem;">
                 "Members Only"
             </p>
-            <h1 style="font-size:4.5rem;line-height:0.92;letter-spacing:0.04em;color:#e2d8d0;margin-bottom:0.35rem;">
+            <h1 style="font-size:4.5rem;line-height:0.92;letter-spacing:0.04em;color:#f3ebe3;margin-bottom:0.35rem;">
                 "Baphomet"
-                <span style="display:block;color:#c41e3a;">"Babes"</span>
+                <span style="display:block;color:#ee4b61;">"Babes"</span>
             </h1>
-            <p style="font-family:'IBM Plex Mono',monospace;font-size:0.6rem;letter-spacing:0.22em;text-transform:uppercase;color:#7a5a6a;margin-bottom:3rem;">
+            <p style="font-family:'IBM Plex Mono',monospace;font-size:0.6rem;letter-spacing:0.22em;text-transform:uppercase;color:#bdafb2;margin-bottom:3rem;">
                 "of Bentonville"
             </p>
 
@@ -126,7 +126,7 @@ pub fn LoginPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
             <Show when=move || tab.get() == "register">
                 <div style="margin-bottom:1.5rem;">
                     <span class="badge badge-special">"Invitation Required"</span>
-                    <p style="font-size:1.05rem;line-height:1.65;color:#7a6a7a;margin-top:0.75rem;font-style:italic;">
+                    <p style="font-size:1.05rem;line-height:1.65;color:#bdafb2;margin-top:0.75rem;font-style:italic;">
                         "Membership is by invitation. If you have a code, you're welcome here."
                     </p>
                 </div>
@@ -154,7 +154,7 @@ pub fn LoginPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                 </form>
             </Show>
 
-            <p style="margin-top:3rem;padding-top:1.5rem;border-top:1px solid #1a1220;font-family:'IBM Plex Mono',monospace;font-size:0.6rem;letter-spacing:0.08em;color:#4a3a4a;line-height:1.7;">
+            <p style="margin-top:3rem;padding-top:1.5rem;border-top:1px solid #1a1220;font-family:'IBM Plex Mono',monospace;font-size:0.6rem;letter-spacing:0.08em;color:#95868f;line-height:1.7;">
                 "All are welcome. No exceptions."
             </p>
         </main>

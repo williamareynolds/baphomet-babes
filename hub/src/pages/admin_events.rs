@@ -182,7 +182,7 @@ pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                                             {e2.event_type.clone()}
                                                         </span>
                                                         <strong style="display:block;margin-top:0.25rem;">{e2.title.clone()}</strong>
-                                                        <small style="color:#8a7a7a;">{e2.date.clone()}</small>
+                                                        <small style="color:#bdafb2;">{e2.date.clone()}</small>
                                                         {e2.poll_embed_url.clone().map(|_| view! {
                                                             <span class="poll-set">"✓ poll set"</span>
                                                         })}

@@ -33,10 +33,10 @@ pub fn HomePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
         <main>
             <div style="margin-bottom:3.5rem;">
                 <h1 style="font-size:5rem;line-height:1;margin-bottom:0.15rem;">"Baphomet Babes"</h1>
-                <p style="font-family:'IBM Plex Mono',monospace;font-size:0.75rem;letter-spacing:0.22em;text-transform:uppercase;color:#c41e3a;margin-bottom:1.5rem;">
+                <p style="font-family:'IBM Plex Mono',monospace;font-size:0.75rem;letter-spacing:0.22em;text-transform:uppercase;color:#ee4b61;margin-bottom:1.5rem;">
                     "of Bentonville"
                 </p>
-                <p style="font-size:1.25rem;line-height:1.7;color:#8a7a8a;max-width:560px;">
+                <p style="font-size:1.25rem;line-height:1.7;color:#bdafb2;max-width:560px;">
                     "An inclusive collective for curious minds and bold spirits. "
                     "Cultural events, scientific discussions, crafts, sports, and more."
                 </p>
@@ -51,16 +51,16 @@ pub fn HomePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                             Some(id) => {
                                 let username = id.username.clone();
                                 view! {
-                                    <p style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#4a3a5a;margin-bottom:2rem;">
+                                    <p style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#95868f;margin-bottom:2rem;">
                                         "Welcome back, " {username} ". "
-                                        <A href="/login" attr:style="color:#c41e3a;">"Log in"</A>
+                                        <A href="/login" attr:style="color:#ee4b61;">"Log in"</A>
                                         " to see what's screening next."
                                     </p>
                                 }.into_any()
                             }
                             None => view! {
-                                <p style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#4a3a5a;margin-bottom:2rem;">
-                                    <A href="/login" attr:style="color:#c41e3a;">"Log in"</A>
+                                <p style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#95868f;margin-bottom:2rem;">
+                                    <A href="/login" attr:style="color:#ee4b61;">"Log in"</A>
                                     " to see what's screening next."
                                 </p>
                             }.into_any()
@@ -71,7 +71,7 @@ pub fn HomePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                 {
                     let today = today.clone();
                     view! {
-                        <p style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#6a5a6a;margin-bottom:1rem;">
+                        <p style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#ad9ea4;margin-bottom:1rem;">
                             "Welcome back, "
                             {move || auth.get().map(|u| u.username).unwrap_or_default()}
                             "."
@@ -123,7 +123,7 @@ pub fn HomePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                 }
             </Show>
 
-            <p style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;letter-spacing:0.1em;color:#3a2a3a;border-top:1px solid #1e1526;padding-top:1.5rem;margin-top:3rem;">
+            <p style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;letter-spacing:0.1em;color:#95868f;border-top:1px solid #1e1526;padding-top:1.5rem;margin-top:3rem;">
                 "All are welcome. No exceptions."
             </p>
         </main>

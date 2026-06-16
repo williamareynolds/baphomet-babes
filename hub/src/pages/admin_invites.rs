@@ -103,10 +103,10 @@ pub fn AdminInvitesPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                             <div>
                                                 <code style="font-size:1rem;">{c.code.clone()}</code>
                                                 <span style={format!("margin-left:0.75rem;color:{};font-size:0.8rem;",
-                                                    if used { "#8a7a7a" } else { "#7ac09a" })}>
+                                                    if used { "#bdafb2" } else { "#93d8b4" })}>
                                                     {if used { "used" } else { "active" }}
                                                 </span>
-                                                <span style="margin-left:0.75rem;color:#8a7a7a;font-size:0.8rem;">
+                                                <span style="margin-left:0.75rem;color:#bdafb2;font-size:0.8rem;">
                                                     {c.role.clone()}
                                                 </span>
                                             </div>
