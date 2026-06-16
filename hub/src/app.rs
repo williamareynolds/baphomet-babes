@@ -1,60 +1,53 @@
-use auth_client::{AuthUser, clear_auth, load_auth};
-use crate::pwa::PwaBars;
-use crate::pages::{
-    about::AboutPage,
-    admin::AdminPage,
-    home::HomePage,
-    login::LoginPage,
-    members::{MembersPage, MemberProfilePage},
-    profile::ProfilePage,
+use auth_client::{AuthUser, load_auth};
+use crate::{
+    components::nav::Nav,
+    pages::{
+        about::AboutPage,
+        admin_events::AdminEventsPage,
+        admin_invites::AdminInvitesPage,
+        history::HistoryPage,
+        home::HomePage,
+        login::LoginPage,
+        members::{MembersPage, MemberProfilePage},
+        profile::ProfilePage,
+        vote::VotePage,
+    },
+    pwa::PwaBars,
+    theme::gothic_theme,
 };
 use leptos::prelude::*;
 use leptos_router::{
-    components::{Route, Router, Routes, A},
+    components::{Route, Router, Routes},
     path,
 };
+use thaw::{ConfigProvider, Theme};
 
 #[component]
 pub fn App() -> impl IntoView {
     let auth: RwSignal<Option<AuthUser>> = RwSignal::new(load_auth());
-
-    let logout = move |_| {
-        clear_auth();
-        auth.set(None);
-    };
+    // The single source of truth for the look. ConfigProvider injects these
+    // tokens as CSS variables onto its wrapper, which every Thaw component
+    // (and our own nav CSS) reads. See crate::theme.
+    let theme: RwSignal<Theme> = RwSignal::new(gothic_theme());
 
     view! {
-        <PwaBars />
-        <Router>
-            <nav>
-                <A href="/" attr:class="nav-brand">
-                    <span class="brand-name">"Baphomet "</span>
-                    <span class="brand-accent">"Babes"</span>
-                </A>
-                <A href="/about">"About"</A>
-                <Show when=move || auth.get().is_some()>
-                    <A href="/members">"Members"</A>
-                    <A href="/profile">"My Profile"</A>
-                    <Show when=move || auth.get().map(|u| u.is_admin()).unwrap_or(false)>
-                        <A href="/admin">"Admin"</A>
-                    </Show>
-                    <button class="secondary" on:click=logout style="padding:0.25rem 0.75rem;font-size:0.85rem;">
-                        "Logout"
-                    </button>
-                </Show>
-                <Show when=move || auth.get().is_none()>
-                    <A href="/login">"Login"</A>
-                </Show>
-            </nav>
-            <Routes fallback=|| view! { <main><p>"Page not found."</p></main> }>
-                <Route path=path!("/") view=move || view! { <HomePage auth=auth /> } />
-                <Route path=path!("/about") view=|| view! { <AboutPage /> } />
-                <Route path=path!("/login") view=move || view! { <LoginPage auth=auth /> } />
-                <Route path=path!("/members") view=move || view! { <MembersPage auth=auth /> } />
-                <Route path=path!("/members/:id") view=move || view! { <MemberProfilePage auth=auth /> } />
-                <Route path=path!("/profile") view=move || view! { <ProfilePage auth=auth /> } />
-                <Route path=path!("/admin") view=move || view! { <AdminPage auth=auth /> } />
-            </Routes>
-        </Router>
+        <ConfigProvider theme class="app-shell">
+            <PwaBars />
+            <Router>
+                <Nav auth=auth />
+                <Routes fallback=|| view! { <main><p>"Page not found."</p></main> }>
+                    <Route path=path!("/") view=move || view! { <HomePage auth=auth /> } />
+                    <Route path=path!("/about") view=|| view! { <AboutPage /> } />
+                    <Route path=path!("/login") view=move || view! { <LoginPage auth=auth /> } />
+                    <Route path=path!("/vote") view=move || view! { <VotePage auth=auth /> } />
+                    <Route path=path!("/history") view=move || view! { <HistoryPage auth=auth /> } />
+                    <Route path=path!("/members") view=move || view! { <MembersPage auth=auth /> } />
+                    <Route path=path!("/members/:id") view=move || view! { <MemberProfilePage auth=auth /> } />
+                    <Route path=path!("/profile") view=move || view! { <ProfilePage auth=auth /> } />
+                    <Route path=path!("/admin/events") view=move || view! { <AdminEventsPage auth=auth /> } />
+                    <Route path=path!("/admin/invites") view=move || view! { <AdminInvitesPage auth=auth /> } />
+                </Routes>
+            </Router>
+        </ConfigProvider>
     }
 }

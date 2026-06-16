@@ -3,6 +3,7 @@
 //! handles the user-facing signals.
 
 use leptos::prelude::*;
+use thaw::{Button, ButtonAppearance, ButtonSize};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
@@ -81,7 +82,11 @@ pub fn PwaBars() -> impl IntoView {
         <Show when=move || update_ready.get()>
             <div class="pwa-bar pwa-update">
                 <span>"A new version is available."</span>
-                <button on:click=move |_| reload()>"Update"</button>
+                <Button
+                    appearance=ButtonAppearance::Secondary
+                    size=ButtonSize::Small
+                    on_click=move |_| reload()
+                >"Update"</Button>
             </div>
         </Show>
     }

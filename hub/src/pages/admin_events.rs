@@ -1,5 +1,6 @@
 use auth_client::AuthUser;
 use crate::api;
+use crate::components::admin_nav::AdminNav;
 use leptos::prelude::*;
 use shared::{CreateEventRequest, UpdateEventRequest};
 use thaw::{
@@ -7,7 +8,7 @@ use thaw::{
 };
 
 #[component]
-pub fn AdminPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
+pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let is_admin = move || auth.get().map(|u| u.is_admin()).unwrap_or(false);
 
     // --- Events ---
@@ -119,6 +120,7 @@ pub fn AdminPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                 fallback=|| view! { <p class="error">"Access denied."</p> }
             >
                 <h1>"Admin"</h1>
+                <AdminNav active="events" />
 
                 <Card>
                     <h2>"Create Event"</h2>

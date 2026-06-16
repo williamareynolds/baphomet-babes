@@ -1,10 +1,12 @@
 use auth_client::AuthUser;
 use crate::api;
+use crate::components::admin_nav::AdminNav;
 use leptos::prelude::*;
 use shared::CreateInviteRequest;
+use thaw::{Button, ButtonAppearance, ButtonType, Card, Field, Select};
 
 #[component]
-pub fn AdminPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
+pub fn AdminInvitesPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let is_admin = move || auth.get().map(|u| u.is_admin()).unwrap_or(false);
     let is_superadmin = move || auth.get().map(|u| u.is_superadmin()).unwrap_or(false);
 
@@ -24,7 +26,7 @@ pub fn AdminPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
         });
     });
 
-    let (invite_role, set_invite_role) = signal("member".to_string());
+    let invite_role = RwSignal::new("member".to_string());
     let (invite_error, set_invite_error) = signal(String::new());
     let (invite_success, set_invite_success) = signal(String::new());
 
@@ -61,31 +63,32 @@ pub fn AdminPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                 fallback=|| view! { <p class="error">"Access denied."</p> }
             >
                 <h1>"Admin"</h1>
+                <AdminNav active="invites" />
 
-                <h2>"Invite Codes"</h2>
-                <div class="card">
-                    <h3>"Generate Code"</h3>
+                <Card>
+                    <h2>"Generate Code"</h2>
                     <form on:submit=handle_create_invite>
-                        <label>"Role"</label>
-                        <select
-                            prop:value=invite_role
-                            on:change=move |e| set_invite_role.set(event_target_value(&e))
-                        >
-                            <option value="member">"Member"</option>
-                            <Show when=is_superadmin>
-                                <option value="admin">"Admin"</option>
-                            </Show>
-                        </select>
+                        <Field label="Role">
+                            <Select value=invite_role>
+                                <option value="member">"Member"</option>
+                                <Show when=is_superadmin>
+                                    <option value="admin">"Admin"</option>
+                                </Show>
+                            </Select>
+                        </Field>
                         <Show when=move || !invite_error.get().is_empty()>
                             <p class="error">{move || invite_error.get()}</p>
                         </Show>
                         <Show when=move || !invite_success.get().is_empty()>
-                            <p class="success" style="font-family:monospace;font-size:1.1rem;">{move || invite_success.get()}</p>
+                            <p class="success" style="font-size:1.05rem;">{move || invite_success.get()}</p>
                         </Show>
-                        <button type="submit">"Generate"</button>
+                        <Button button_type=ButtonType::Submit appearance=ButtonAppearance::Primary>
+                            "Generate"
+                        </Button>
                     </form>
-                </div>
+                </Card>
 
+                <h2 class="section-heading">"All Codes"</h2>
                 {move || match invites.get() {
                     None => view! { <p>"Loading..."</p> }.into_any(),
                     Some(Err(e)) => view! { <p class="error">{e}</p> }.into_any(),
@@ -95,23 +98,28 @@ pub fn AdminPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                 let id = c.id.clone();
                                 let used = c.used;
                                 view! {
-                                    <div class="card" style="display:flex;justify-content:space-between;align-items:center;">
-                                        <div>
-                                            <code style="font-size:1rem;">{c.code.clone()}</code>
-                                            <span style={format!("margin-left:0.75rem;color:{};font-size:0.8rem;",
-                                                if used { "#888" } else { "#6bffb8" })}>
-                                                {if used { "used" } else { "active" }}
-                                            </span>
-                                            <span style="margin-left:0.75rem;color:#aaa;font-size:0.8rem;">
-                                                {c.role.clone()}
-                                            </span>
+                                    <Card>
+                                        <div class="admin-row">
+                                            <div>
+                                                <code style="font-size:1rem;">{c.code.clone()}</code>
+                                                <span style={format!("margin-left:0.75rem;color:{};font-size:0.8rem;",
+                                                    if used { "#8a7a7a" } else { "#7ac09a" })}>
+                                                    {if used { "used" } else { "active" }}
+                                                </span>
+                                                <span style="margin-left:0.75rem;color:#8a7a7a;font-size:0.8rem;">
+                                                    {c.role.clone()}
+                                                </span>
+                                            </div>
+                                            {(!used).then(|| view! {
+                                                <div class="admin-actions">
+                                                    <Button
+                                                        appearance=ButtonAppearance::Secondary
+                                                        on_click=move |_| handle_delete_invite(id.clone())
+                                                    >"Revoke"</Button>
+                                                </div>
+                                            })}
                                         </div>
-                                        {(!used).then(|| view! {
-                                            <button class="secondary"
-                                                on:click=move |_| handle_delete_invite(id.clone())
-                                            >"Revoke"</button>
-                                        })}
-                                    </div>
+                                    </Card>
                                 }
                             }).collect::<Vec<_>>()}
                         </div>

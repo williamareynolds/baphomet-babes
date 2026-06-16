@@ -1,4 +1,7 @@
-use shared::{AuthResponse, CreateInviteRequest, InviteCode, LoginRequest, RegisterRequest, Profile, UpdateProfileRequest};
+use shared::{
+    AuthResponse, CreateEventRequest, CreateInviteRequest, Event, InviteCode, LoginRequest,
+    Profile, RegisterRequest, UpdateEventRequest, UpdateProfileRequest,
+};
 
 /// API base chosen at runtime from the page's hostname, so the URL can never be
 /// baked in wrong by a build flag: any *.baphometbabes.com host uses the
@@ -138,4 +141,20 @@ pub async fn create_invite(req: CreateInviteRequest, token: &str) -> Result<Invi
 
 pub async fn delete_invite(id: &str, token: &str) -> Result<(), String> {
     delete(&format!("/invites/{id}"), token).await
+}
+
+pub async fn fetch_events(token: &str) -> Result<Vec<Event>, String> {
+    get("/events", token).await
+}
+
+pub async fn create_event(req: CreateEventRequest, token: &str) -> Result<Event, String> {
+    post_json("/events", &req, Some(token)).await
+}
+
+pub async fn update_event(id: &str, req: UpdateEventRequest, token: &str) -> Result<Event, String> {
+    put_json(&format!("/events/{id}"), &req, token).await
+}
+
+pub async fn delete_event(id: &str, token: &str) -> Result<(), String> {
+    delete(&format!("/events/{id}"), token).await
 }

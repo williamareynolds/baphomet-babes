@@ -1,7 +1,15 @@
 use leptos::prelude::*;
+use thaw::Card;
 
 #[component]
 pub fn AboutPage() -> impl IntoView {
+    let pillars = [
+        ("Cultural Events", "Film screenings, music, art — celebrating culture in all its forms."),
+        ("Scientific Discussions", "Deep dives into the natural world, technology, and the cosmos."),
+        ("Crafts", "Making things with our hands — workshops, projects, collaborative builds."),
+        ("Sports", "Getting outside and moving — casual games to organized outings."),
+    ];
+
     view! {
         <main>
             <div style="max-width:680px;">
@@ -21,38 +29,16 @@ pub fn AboutPage() -> impl IntoView {
                 </div>
 
                 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem;margin-bottom:3rem;">
-                    <div class="card" style="border-color:rgba(196,30,58,0.28);">
-                        <p style="font-family:'IBM Plex Mono',monospace;font-size:0.6rem;letter-spacing:0.16em;text-transform:uppercase;color:#c41e3a;margin-bottom:0.6rem;">
-                            "Cultural Events"
-                        </p>
-                        <p style="color:#8a7a7a;font-size:1.05rem;line-height:1.65;">
-                            "Film screenings, music, art — celebrating culture in all its forms."
-                        </p>
-                    </div>
-                    <div class="card" style="border-color:rgba(196,30,58,0.28);">
-                        <p style="font-family:'IBM Plex Mono',monospace;font-size:0.6rem;letter-spacing:0.16em;text-transform:uppercase;color:#c41e3a;margin-bottom:0.6rem;">
-                            "Scientific Discussions"
-                        </p>
-                        <p style="color:#8a7a7a;font-size:1.05rem;line-height:1.65;">
-                            "Deep dives into the natural world, technology, and the cosmos."
-                        </p>
-                    </div>
-                    <div class="card" style="border-color:rgba(196,30,58,0.28);">
-                        <p style="font-family:'IBM Plex Mono',monospace;font-size:0.6rem;letter-spacing:0.16em;text-transform:uppercase;color:#c41e3a;margin-bottom:0.6rem;">
-                            "Crafts"
-                        </p>
-                        <p style="color:#8a7a7a;font-size:1.05rem;line-height:1.65;">
-                            "Making things with our hands — workshops, projects, collaborative builds."
-                        </p>
-                    </div>
-                    <div class="card" style="border-color:rgba(196,30,58,0.28);">
-                        <p style="font-family:'IBM Plex Mono',monospace;font-size:0.6rem;letter-spacing:0.16em;text-transform:uppercase;color:#c41e3a;margin-bottom:0.6rem;">
-                            "Sports"
-                        </p>
-                        <p style="color:#8a7a7a;font-size:1.05rem;line-height:1.65;">
-                            "Getting outside and moving — casual games to organized outings."
-                        </p>
-                    </div>
+                    {pillars.into_iter().map(|(label, desc)| view! {
+                        <Card>
+                            <p style="font-family:'IBM Plex Mono',monospace;font-size:0.6rem;letter-spacing:0.16em;text-transform:uppercase;color:#c41e3a;margin-bottom:0.6rem;">
+                                {label}
+                            </p>
+                            <p style="color:#8a7a7a;font-size:1.05rem;line-height:1.65;">
+                                {desc}
+                            </p>
+                        </Card>
+                    }).collect::<Vec<_>>()}
                 </div>
 
                 <p style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;letter-spacing:0.1em;color:#3a2a3a;border-top:1px solid #1e1526;padding-top:1.5rem;">

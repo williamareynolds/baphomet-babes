@@ -70,7 +70,7 @@ test("edit profile and publish it", async ({ page }) => {
   await page
     .getByPlaceholder("A few words about yourself…")
     .fill("Founding member. Crafts, cosmos, and cinema.");
-  await page.getByRole("checkbox").check();
+  await page.getByRole("switch").check();
 
   await page.getByRole("button", { name: "Save Profile" }).click();
   await expect(page.locator(".success")).toHaveText("Profile saved.");
@@ -80,7 +80,7 @@ test("edit profile and publish it", async ({ page }) => {
   await expect(
     page.getByPlaceholder("Leave blank to use username"),
   ).toHaveValue("Root Babe");
-  await expect(page.getByRole("checkbox")).toBeChecked();
+  await expect(page.getByRole("switch")).toBeChecked();
 });
 
 test("published profile appears in the member directory", async ({ page }) => {

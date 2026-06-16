@@ -3,6 +3,7 @@ use auth_client::AuthUser;
 use leptos::prelude::*;
 use leptos_router::components::A;
 use shared::Profile;
+use thaw::{Button, ButtonAppearance, Card};
 
 #[component]
 pub fn MembersPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
@@ -42,7 +43,7 @@ pub fn MembersPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                     let id = m.user_id.clone();
                     view! {
                         <A href={format!("/members/{id}")} attr:style="text-decoration:none;">
-                            <div class="card" style="cursor:pointer;transition:border-color 0.2s,transform 0.15s;border-color:rgba(196,30,58,0.15);">
+                            <Card>
                                 <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;">
                                     {if let Some(av) = m.avatar_url {
                                         view! {
@@ -70,7 +71,7 @@ pub fn MembersPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                         <p style="color:#6a5a6a;font-size:0.95rem;line-height:1.5;">{preview}</p>
                                     }
                                 })}
-                            </div>
+                            </Card>
                         </A>
                     }
                 }).collect::<Vec<_>>()}
@@ -158,7 +159,7 @@ pub fn MemberProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                         {if is_own {
                             Some(view! {
                                 <A href="/profile">
-                                    <button class="secondary">"Edit Profile"</button>
+                                    <Button appearance=ButtonAppearance::Secondary>"Edit Profile"</Button>
                                 </A>
                             })
                         } else { None }}

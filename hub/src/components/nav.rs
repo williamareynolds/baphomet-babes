@@ -16,13 +16,18 @@ pub fn Nav(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
 
     view! {
         <nav class="site-nav">
-            <A href="/" attr:class="nav-brand">"Baphomet Babes"</A>
-            <a href="https://baphometbabes.com/about">"About"</a>
+            <A href="/" attr:class="nav-brand">
+                <span class="brand-name">"Baphomet "</span>
+                <span class="brand-accent">"Babes"</span>
+            </A>
+            <A href="/about">"About"</A>
             <Show when=move || auth.get().is_some()>
                 <A href="/vote">"Vote"</A>
                 <A href="/history">"History"</A>
+                <A href="/members">"Members"</A>
+                <A href="/profile">"My Profile"</A>
                 <Show when=move || auth.get().map(|u| u.is_admin()).unwrap_or(false)>
-                    <A href="/admin">"Admin"</A>
+                    <A href="/admin/events">"Admin"</A>
                 </Show>
                 <button class="nav-link-btn" on:click=logout>"Logout"</button>
             </Show>

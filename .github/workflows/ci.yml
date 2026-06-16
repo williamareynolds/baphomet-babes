@@ -33,13 +33,11 @@ jobs:
           workspaces: ". -> target"
 
       - name: Run test suites
-        # frontend/hub are WASM-only; covered by the type-check step below
-        run: cargo test --workspace --exclude frontend --exclude hub
+        # hub is WASM-only; covered by the type-check step below
+        run: cargo test --workspace --exclude hub
 
-      - name: Type-check WASM frontends
-        run: |
-          cargo check -p hub --target wasm32-unknown-unknown
-          cargo check -p frontend --target wasm32-unknown-unknown
+      - name: Type-check WASM frontend
+        run: cargo check -p hub --target wasm32-unknown-unknown
 
   integration:
     name: Integration tests (Firestore emulator)
@@ -222,7 +220,7 @@ jobs:
             --allow-unauthenticated \
             --min-instances 0 \
             --max-instances 3 \
-            --set-env-vars "^@^GCP_PROJECT_ID=$PROJECT_ID@JWT_SECRET=${{ secrets.JWT_SECRET }}@SUPERADMIN_INVITE_CODE=${{ secrets.SUPERADMIN_INVITE_CODE }}@ALLOWED_ORIGINS=https://baphometbabes.com,https://movienight.baphometbabes.com"
+            --set-env-vars "^@^GCP_PROJECT_ID=$PROJECT_ID@JWT_SECRET=${{ secrets.JWT_SECRET }}@SUPERADMIN_INVITE_CODE=${{ secrets.SUPERADMIN_INVITE_CODE }}@ALLOWED_ORIGINS=https://baphometbabes.com"
 
   deploy-hub:
     name: Deploy hub (Firebase Hosting)
@@ -261,43 +259,4 @@ jobs:
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           channelId: live
           target: hub
-          projectId: ${{ vars.GCP_PROJECT_ID }}
-
-  deploy-movienight:
-    name: Deploy movienight (Firebase Hosting)
-    needs: [test, integration, e2e]
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: ". -> target"
-
-      - uses: cargo-bins/cargo-binstall@main
-
-      - name: Install trunk
-        run: cargo binstall -y --force trunk
-
-      - name: Build
-        working-directory: frontend
-        env:
-          BUILD_SHA: ${{ github.sha }}
-        run: |
-          trunk build --release
-          # Stamp the published version so deployed clients can detect updates.
-          echo "{\"version\":\"${BUILD_SHA}\"}" > dist/version.json
-
-      - name: Deploy to Firebase Hosting
-        uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          channelId: live
-          target: movienight
           projectId: ${{ vars.GCP_PROJECT_ID }}

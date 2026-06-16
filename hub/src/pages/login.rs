@@ -3,6 +3,7 @@ use crate::api;
 use leptos::prelude::*;
 use leptos_router::hooks::use_navigate;
 use shared::{AuthResponse, LoginRequest, RegisterRequest};
+use thaw::{Button, ButtonAppearance, ButtonType, Field, Input, InputType};
 
 #[component]
 pub fn LoginPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
@@ -11,13 +12,13 @@ pub fn LoginPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let (loading, set_loading) = signal(false);
     let (auth_response, set_auth_response) = signal(None::<AuthResponse>);
 
-    let (email, set_email) = signal(String::new());
-    let (password, set_password) = signal(String::new());
+    let email = RwSignal::new(String::new());
+    let password = RwSignal::new(String::new());
 
-    let (reg_email, set_reg_email) = signal(String::new());
-    let (reg_username, set_reg_username) = signal(String::new());
-    let (reg_password, set_reg_password) = signal(String::new());
-    let (invite_code, set_invite_code) = signal(String::new());
+    let reg_email = RwSignal::new(String::new());
+    let reg_username = RwSignal::new(String::new());
+    let reg_password = RwSignal::new(String::new());
+    let invite_code = RwSignal::new(String::new());
 
     let navigate = use_navigate();
     Effect::new(move |_| {
@@ -66,9 +67,17 @@ pub fn LoginPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
         });
     };
 
+    let tab_style = move |which: &str| format!(
+        "background:transparent;border:none;border-bottom:2px solid {};border-radius:0;\
+         padding:0.5rem 1.25rem 0.65rem;margin-bottom:-1px;\
+         font-family:'IBM Plex Mono',monospace;font-size:0.62rem;letter-spacing:0.14em;\
+         text-transform:uppercase;color:{};cursor:pointer;",
+        if tab.get() == which { "#c41e3a" } else { "transparent" },
+        if tab.get() == which { "#e2d8d0" } else { "#6a5a6a" },
+    );
+
     view! {
         <main style="max-width:460px;padding:4rem 2rem 6rem;">
-
             <p style="font-family:'IBM Plex Mono',monospace;font-size:0.55rem;letter-spacing:0.35em;text-transform:uppercase;color:#5a4a5a;margin-bottom:0.5rem;">
                 "Members Only"
             </p>
@@ -83,25 +92,11 @@ pub fn LoginPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
             <div style="display:flex;border-bottom:1px solid #251e2c;margin-bottom:2rem;">
                 <button
                     on:click=move |_| { set_tab.set("login"); set_error.set(String::new()); }
-                    style={move || format!(
-                        "background:transparent;border:none;border-bottom:2px solid {};border-radius:0;\
-                         padding:0.5rem 1.25rem 0.65rem;margin-bottom:-1px;\
-                         font-family:'IBM Plex Mono',monospace;font-size:0.62rem;letter-spacing:0.14em;\
-                         text-transform:uppercase;color:{};cursor:pointer;",
-                        if tab.get() == "login" { "#c41e3a" } else { "transparent" },
-                        if tab.get() == "login" { "#e2d8d0" } else { "#6a5a6a" }
-                    )}
+                    style=move || tab_style("login")
                 >"Enter"</button>
                 <button
                     on:click=move |_| { set_tab.set("register"); set_error.set(String::new()); }
-                    style={move || format!(
-                        "background:transparent;border:none;border-bottom:2px solid {};border-radius:0;\
-                         padding:0.5rem 1.25rem 0.65rem;margin-bottom:-1px;\
-                         font-family:'IBM Plex Mono',monospace;font-size:0.62rem;letter-spacing:0.14em;\
-                         text-transform:uppercase;color:{};cursor:pointer;",
-                        if tab.get() == "register" { "#c41e3a" } else { "transparent" },
-                        if tab.get() == "register" { "#e2d8d0" } else { "#6a5a6a" }
-                    )}
+                    style=move || tab_style("register")
                 >"Request Entry"</button>
             </div>
 
@@ -110,28 +105,21 @@ pub fn LoginPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
             </Show>
 
             <Show when=move || tab.get() == "login">
-                <form on:submit=handle_login style="max-width:100%;">
-                    <div style="margin-bottom:1.25rem;">
-                        <label style="color:#9a8a9a;">"Email"</label>
-                        <input id="login-email" type="email" required
-                            prop:value=email
-                            on:input=move |e| set_email.set(event_target_value(&e))
-                            style="background:#0f0b14;border-color:#2e2438;color:#e2d8d0;" />
-                    </div>
-                    <div style="margin-bottom:0.5rem;">
-                        <label style="color:#9a8a9a;">"Password"</label>
-                        <input id="login-password" type="password" required
-                            prop:value=password
-                            on:input=move |e| set_password.set(event_target_value(&e))
-                            style="background:#0f0b14;border-color:#2e2438;color:#e2d8d0;" />
-                    </div>
-                    <div style="margin-top:1.5rem;">
-                        <button type="submit"
-                            disabled=move || loading.get()
-                            style="display:inline-block;padding:0.65rem 2.5rem;background:#c41e3a;color:#fff;border:none;border-radius:3px;cursor:pointer;font-family:'IBM Plex Mono',monospace;font-size:0.7rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;">
-                            {move || if loading.get() { "Entering..." } else { "Enter" }}
-                        </button>
-                    </div>
+                <form on:submit=handle_login>
+                    <Field label="Email">
+                        <Input id="login-email" value=email input_type=InputType::Email placeholder="you@example.com" />
+                    </Field>
+                    <Field label="Password">
+                        <Input id="login-password" value=password input_type=InputType::Password placeholder="••••••••" />
+                    </Field>
+                    <Button
+                        button_type=ButtonType::Submit
+                        appearance=ButtonAppearance::Primary
+                        loading=loading
+                        disabled=loading
+                    >
+                        {move || if loading.get() { "Entering..." } else { "Enter" }}
+                    </Button>
                 </form>
             </Show>
 
@@ -142,49 +130,33 @@ pub fn LoginPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                         "Membership is by invitation. If you have a code, you're welcome here."
                     </p>
                 </div>
-                <form on:submit=handle_register style="max-width:100%;">
-                    <div>
-                        <label style="color:#9a8a9a;">"Email"</label>
-                        <input id="reg-email" type="email" required
-                            prop:value=reg_email
-                            on:input=move |e| set_reg_email.set(event_target_value(&e))
-                            style="background:#0f0b14;border-color:#2e2438;color:#e2d8d0;" />
-                    </div>
-                    <div>
-                        <label style="color:#9a8a9a;">"Username"</label>
-                        <input id="reg-username" type="text" required
-                            prop:value=reg_username
-                            on:input=move |e| set_reg_username.set(event_target_value(&e))
-                            style="background:#0f0b14;border-color:#2e2438;color:#e2d8d0;" />
-                    </div>
-                    <div>
-                        <label style="color:#9a8a9a;">"Password"</label>
-                        <input id="reg-password" type="password" required
-                            prop:value=reg_password
-                            on:input=move |e| set_reg_password.set(event_target_value(&e))
-                            style="background:#0f0b14;border-color:#2e2438;color:#e2d8d0;" />
-                    </div>
-                    <div>
-                        <label style="color:#c41e3a;">"Invite Code"</label>
-                        <input id="reg-invite" type="text" required
-                            prop:value=invite_code
-                            on:input=move |e| set_invite_code.set(event_target_value(&e))
-                            style="background:#0f0b14;border-color:rgba(196,30,58,0.4);color:#e2d8d0;" />
-                    </div>
-                    <div style="margin-top:1.5rem;">
-                        <button type="submit"
-                            disabled=move || loading.get()
-                            style="display:inline-block;padding:0.65rem 2.5rem;background:#c41e3a;color:#fff;border:none;border-radius:3px;cursor:pointer;font-family:'IBM Plex Mono',monospace;font-size:0.7rem;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;">
-                            {move || if loading.get() { "Joining..." } else { "Join" }}
-                        </button>
-                    </div>
+                <form on:submit=handle_register>
+                    <Field label="Email">
+                        <Input id="reg-email" value=reg_email input_type=InputType::Email placeholder="you@example.com" />
+                    </Field>
+                    <Field label="Username">
+                        <Input id="reg-username" value=reg_username placeholder="username" />
+                    </Field>
+                    <Field label="Password">
+                        <Input id="reg-password" value=reg_password input_type=InputType::Password placeholder="••••••••" />
+                    </Field>
+                    <Field label="Invite Code">
+                        <Input id="reg-invite" value=invite_code placeholder="your invite code" />
+                    </Field>
+                    <Button
+                        button_type=ButtonType::Submit
+                        appearance=ButtonAppearance::Primary
+                        loading=loading
+                        disabled=loading
+                    >
+                        {move || if loading.get() { "Joining..." } else { "Join" }}
+                    </Button>
                 </form>
             </Show>
 
             <p style="margin-top:3rem;padding-top:1.5rem;border-top:1px solid #1a1220;font-family:'IBM Plex Mono',monospace;font-size:0.6rem;letter-spacing:0.08em;color:#4a3a4a;line-height:1.7;">
                 "All are welcome. No exceptions."
             </p>
-
         </main>
     }
 }

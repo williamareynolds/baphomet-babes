@@ -1,6 +1,9 @@
 pub mod about;
-pub mod admin;
+pub mod admin_events;
+pub mod admin_invites;
+pub mod history;
 pub mod home;
 pub mod login;
 pub mod members;
 pub mod profile;
+pub mod vote;

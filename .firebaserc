@@ -5,8 +5,7 @@
   "targets": {
     "baphomet-babes": {
       "hosting": {
-        "hub": ["baphomet-babes"],
-        "movienight": ["baphomet-babes-movienight"]
+        "hub": ["baphomet-babes"]
       }
     }
   }

@@ -16,20 +16,12 @@ dev-emulator:
 dev-backend-emulated:
     FIRESTORE_EMULATOR_HOST=127.0.0.1:8789 cargo run -p backend
 
-dev-movienight:
-    cd frontend && trunk serve
-
 dev-hub:
     cd hub && trunk serve
 
 # Build (stamps the git SHA into the bundle + dist/version.json for update checks)
 build-hub:
     cd hub && BUILD_SHA=$(git rev-parse HEAD) trunk build --release && echo "{\"version\":\"$(git rev-parse HEAD)\"}" > dist/version.json
-
-build-movienight:
-    cd frontend && BUILD_SHA=$(git rev-parse HEAD) trunk build --release && echo "{\"version\":\"$(git rev-parse HEAD)\"}" > dist/version.json
-
-build-all: build-hub build-movienight
 
 # Check (no WASM toolchain needed for type check)
 check-backend:
@@ -38,15 +30,12 @@ check-backend:
 check-hub:
     cargo check -p hub --target wasm32-unknown-unknown
 
-check-movienight:
-    cargo check -p frontend --target wasm32-unknown-unknown
-
-check: check-backend check-hub check-movienight
+check: check-backend check-hub
 
 # Test — unit, property, and golden suites (integration self-skips without emulator).
-# frontend/hub are WASM-only (excluded); they get type-checked by `just check`.
+# hub is WASM-only (excluded); it gets type-checked by `just check`.
 test:
-    cargo test --workspace --exclude frontend --exclude hub
+    cargo test --workspace --exclude hub
 
 # Integration tests against the Firestore emulator.
 # Requires: gcloud firestore emulator component + Java 21+ on PATH
@@ -94,6 +83,3 @@ setup-killswitch:
 # Deploy (CI handles this; use for manual deploys)
 deploy-hub: build-hub
     firebase deploy --only hosting:hub
-
-deploy-movienight: build-movienight
-    firebase deploy --only hosting:movienight
