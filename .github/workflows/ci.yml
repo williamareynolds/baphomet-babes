@@ -247,7 +247,7 @@ jobs:
 
       - name: Build
         working-directory: hub
-        run: trunk build --release --features production
+        run: trunk build --release
 
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
@@ -281,7 +281,7 @@ jobs:
 
       - name: Build
         working-directory: frontend
-        run: trunk build --release --features production
+        run: trunk build --release
 
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0

@@ -1,10 +1,19 @@
 use shared::{AuthResponse, LoginRequest, RegisterRequest, Profile, UpdateProfileRequest};
 
-#[cfg(feature = "production")]
-pub const API_BASE: &str = "https://movie-night-api-r6vuubbgla-uc.a.run.app";
-
-#[cfg(not(feature = "production"))]
-pub const API_BASE: &str = "http://localhost:8080";
+/// API base chosen at runtime from the page's hostname, so the URL can never be
+/// baked in wrong by a build flag: any *.baphometbabes.com host uses the
+/// deployed backend; everything else (localhost) uses the dev backend.
+fn api_base() -> &'static str {
+    let on_prod = web_sys::window()
+        .and_then(|w| w.location().hostname().ok())
+        .map(|h| h.ends_with("baphometbabes.com"))
+        .unwrap_or(false);
+    if on_prod {
+        "https://movie-night-api-r6vuubbgla-uc.a.run.app"
+    } else {
+        "http://localhost:8080"
+    }
+}
 
 /// Attach the Firebase App Check token when one is available. Absent in dev, so
 /// this is a no-op there; in production every backend call carries it.
@@ -18,7 +27,7 @@ async fn attach_app_check(
 }
 
 async fn get<T: serde::de::DeserializeOwned>(path: &str, token: &str) -> Result<T, String> {
-    let req = gloo_net::http::Request::get(&format!("{API_BASE}{path}"))
+    let req = gloo_net::http::Request::get(&format!("{}{path}", api_base()))
         .header("Authorization", &format!("Bearer {token}"));
     let resp = attach_app_check(req)
         .await
@@ -38,7 +47,7 @@ async fn put_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(
     body: &B,
     token: &str,
 ) -> Result<T, String> {
-    let req = gloo_net::http::Request::put(&format!("{API_BASE}{path}"))
+    let req = gloo_net::http::Request::put(&format!("{}{path}", api_base()))
         .header("Content-Type", "application/json")
         .header("Authorization", &format!("Bearer {token}"));
     let resp = attach_app_check(req)
@@ -61,7 +70,7 @@ async fn post_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(
     body: &B,
     token: Option<&str>,
 ) -> Result<T, String> {
-    let mut req = gloo_net::http::Request::post(&format!("{API_BASE}{path}"))
+    let mut req = gloo_net::http::Request::post(&format!("{}{path}", api_base()))
         .header("Content-Type", "application/json");
     if let Some(t) = token {
         req = req.header("Authorization", &format!("Bearer {t}"));
