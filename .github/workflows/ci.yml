@@ -1,11 +1,23 @@
-name: Test
+name: CI
+
+# One pipeline for everything. Tests run on every push and PR. The three deploys
+# run only after all tests pass, and only on a push to main (or a manual
+# dispatch). Each deploy is its own job so they run in parallel.
 
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  REGION: us-central1
+  SERVICE: movie-night-api
+  IMAGE: us-central1-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/movie-night/api
 
 jobs:
+  # ---------------------------------------------------------------- tests ----
   test:
     name: Unit, property & golden tests
     runs-on: ubuntu-latest
@@ -171,3 +183,111 @@ jobs:
           pkill -9 -f 'target/debug/backend' || true
           pkill -9 -f trunk || true
           true
+
+  # -------------------------------------------------------------- deploys ----
+  # Gate: only after every test job passes, and only on a push to main or a
+  # manual run. Skipped entirely on pull requests.
+  deploy-backend:
+    name: Deploy backend (Cloud Run)
+    needs: [test, integration, e2e]
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+
+      - name: Build and push image
+        run: |
+          docker build \
+            -t $IMAGE:${{ github.sha }} \
+            -t $IMAGE:latest \
+            .
+          docker push $IMAGE:${{ github.sha }}
+          docker push $IMAGE:latest
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy $SERVICE \
+            --image $IMAGE:${{ github.sha }} \
+            --region $REGION \
+            --platform managed \
+            --allow-unauthenticated \
+            --min-instances 0 \
+            --max-instances 3 \
+            --set-env-vars "^@^GCP_PROJECT_ID=$PROJECT_ID@JWT_SECRET=${{ secrets.JWT_SECRET }}@SUPERADMIN_INVITE_CODE=${{ secrets.SUPERADMIN_INVITE_CODE }}@ALLOWED_ORIGINS=https://baphometbabes.com,https://movienight.baphometbabes.com"
+
+  deploy-hub:
+    name: Deploy hub (Firebase Hosting)
+    needs: [test, integration, e2e]
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - uses: cargo-bins/cargo-binstall@main
+
+      - name: Install trunk
+        run: cargo binstall -y --force trunk
+
+      - name: Build
+        working-directory: hub
+        run: trunk build --release --features production
+
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          channelId: live
+          target: hub
+          projectId: ${{ vars.GCP_PROJECT_ID }}
+
+  deploy-movienight:
+    name: Deploy movienight (Firebase Hosting)
+    needs: [test, integration, e2e]
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      - uses: cargo-bins/cargo-binstall@main
+
+      - name: Install trunk
+        run: cargo binstall -y --force trunk
+
+      - name: Build
+        working-directory: frontend
+        run: trunk build --release --features production
+
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          channelId: live
+          target: movienight
+          projectId: ${{ vars.GCP_PROJECT_ID }}
