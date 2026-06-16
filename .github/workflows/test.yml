@@ -152,21 +152,9 @@ jobs:
             || { echo "backend failed to start"; cat /tmp/backend.log; exit 1; }
           echo "backend up on :8080"
 
-      - name: Start hub
-        working-directory: hub
-        run: |
-          # trunk is installed by cargo-binstall into ~/.cargo/bin, which isn't
-          # necessarily on PATH (the runner's pre-installed cargo is elsewhere).
-          export PATH="$HOME/.cargo/bin:$PATH"
-          nohup trunk serve > /tmp/trunk.log 2>&1 &
-          for i in $(seq 1 150); do
-            curl -sf http://localhost:3001 >/dev/null && break
-            sleep 2
-          done
-          curl -sf http://localhost:3001 >/dev/null \
-            || { echo "hub failed to start"; cat /tmp/trunk.log; exit 1; }
-          echo "hub up on :3001"
-
+      # trunk (the hub server) is left for Playwright to start/stop — it's a
+      # single process that tears down cleanly. Only the emulator and backend
+      # (whose orphaned grandchildren hung teardown) are pre-started above.
       - name: Run e2e tests
         working-directory: e2e
         run: npx playwright test

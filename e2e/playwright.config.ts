@@ -51,7 +51,10 @@ export default defineConfig({
       command: "trunk serve",
       url: "http://localhost:3001",
       cwd: "../hub",
-      reuseExistingServer: !!process.env.CI,
+      // Playwright manages trunk itself (it's a single process that tears down
+      // cleanly — unlike the emulator's Java child and the cargo-run backend,
+      // which are pre-started as workflow steps and reused).
+      reuseExistingServer: false,
       timeout: 300_000,
     },
   ],
