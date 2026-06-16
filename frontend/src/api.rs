@@ -1,4 +1,4 @@
-use shared::{AuthResponse, CreateEventRequest, CreateInviteRequest, Event, InviteCode, LoginRequest, RegisterRequest, UpdateEventRequest};
+use shared::{AuthResponse, CreateEventRequest, Event, LoginRequest, RegisterRequest, UpdateEventRequest};
 
 // In production, set via Trunk feature flag or env substitution
 // After first deploy, either:
@@ -128,16 +128,4 @@ pub async fn update_event(id: &str, req: UpdateEventRequest, token: &str) -> Res
 
 pub async fn delete_event(id: &str, token: &str) -> Result<(), String> {
     delete(&format!("/events/{id}"), token).await
-}
-
-pub async fn fetch_invites(token: &str) -> Result<Vec<InviteCode>, String> {
-    get("/invites", token).await
-}
-
-pub async fn create_invite(req: CreateInviteRequest, token: &str) -> Result<InviteCode, String> {
-    post_json("/invites", &req, Some(token)).await
-}
-
-pub async fn delete_invite(id: &str, token: &str) -> Result<(), String> {
-    delete(&format!("/invites/{id}"), token).await
 }

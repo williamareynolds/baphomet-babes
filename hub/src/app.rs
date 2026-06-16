@@ -2,6 +2,7 @@ use auth_client::{AuthUser, clear_auth, load_auth};
 use crate::pwa::PwaBars;
 use crate::pages::{
     about::AboutPage,
+    admin::AdminPage,
     home::HomePage,
     login::LoginPage,
     members::{MembersPage, MemberProfilePage},
@@ -34,6 +35,9 @@ pub fn App() -> impl IntoView {
                 <Show when=move || auth.get().is_some()>
                     <A href="/members">"Members"</A>
                     <A href="/profile">"My Profile"</A>
+                    <Show when=move || auth.get().map(|u| u.is_admin()).unwrap_or(false)>
+                        <A href="/admin">"Admin"</A>
+                    </Show>
                     <button class="secondary" on:click=logout style="padding:0.25rem 0.75rem;font-size:0.85rem;">
                         "Logout"
                     </button>
@@ -49,6 +53,7 @@ pub fn App() -> impl IntoView {
                 <Route path=path!("/members") view=move || view! { <MembersPage auth=auth /> } />
                 <Route path=path!("/members/:id") view=move || view! { <MemberProfilePage auth=auth /> } />
                 <Route path=path!("/profile") view=move || view! { <ProfilePage auth=auth /> } />
+                <Route path=path!("/admin") view=move || view! { <AdminPage auth=auth /> } />
             </Routes>
         </Router>
     }

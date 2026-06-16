@@ -1,4 +1,4 @@
-use shared::{AuthResponse, LoginRequest, RegisterRequest, Profile, UpdateProfileRequest};
+use shared::{AuthResponse, CreateInviteRequest, InviteCode, LoginRequest, RegisterRequest, Profile, UpdateProfileRequest};
 
 /// API base chosen at runtime from the page's hostname, so the URL can never be
 /// baked in wrong by a build flag: any *.baphometbabes.com host uses the
@@ -90,6 +90,20 @@ async fn post_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(
     resp.json().await.map_err(|e| e.to_string())
 }
 
+async fn delete(path: &str, token: &str) -> Result<(), String> {
+    let req = gloo_net::http::Request::delete(&format!("{}{path}", api_base()))
+        .header("Authorization", &format!("Bearer {token}"));
+    let resp = attach_app_check(req)
+        .await
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.ok() {
+        return Err("delete failed".into());
+    }
+    Ok(())
+}
+
 pub async fn login(req: LoginRequest) -> Result<AuthResponse, String> {
     post_json("/auth/login", &req, None).await
 }
@@ -112,4 +126,16 @@ pub async fn list_members(token: &str) -> Result<Vec<Profile>, String> {
 
 pub async fn get_member(id: &str, token: &str) -> Result<Profile, String> {
     get(&format!("/members/{id}"), token).await
+}
+
+pub async fn fetch_invites(token: &str) -> Result<Vec<InviteCode>, String> {
+    get("/invites", token).await
+}
+
+pub async fn create_invite(req: CreateInviteRequest, token: &str) -> Result<InviteCode, String> {
+    post_json("/invites", &req, Some(token)).await
+}
+
+pub async fn delete_invite(id: &str, token: &str) -> Result<(), String> {
+    delete(&format!("/invites/{id}"), token).await
 }
