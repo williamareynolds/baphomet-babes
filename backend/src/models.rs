@@ -8,6 +8,8 @@ pub struct UserDoc {
     pub username: String,
     pub password_hash: String,
     pub role: String,
+    #[serde(default)]
+    pub disabled: bool,
     pub created_at: i64,
 }
 

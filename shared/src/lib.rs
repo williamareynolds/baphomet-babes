@@ -149,6 +149,23 @@ pub struct CreateInviteRequest {
     pub role: String, // "admin" | "member"
 }
 
+// User administration (superadmin control panel)
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct UserSummary {
+    pub id: String,
+    pub email: String,
+    pub username: String,
+    pub role: String, // "superadmin" | "admin" | "member"
+    pub disabled: bool,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UpdateUserRequest {
+    pub role: Option<String>,
+    pub disabled: Option<bool>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorResponse {
     pub error: String,

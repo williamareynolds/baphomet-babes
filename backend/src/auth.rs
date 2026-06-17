@@ -1,7 +1,10 @@
-use crate::error::{AppError, AppResult};
+use crate::{AppState, error::{AppError, AppResult}, models::UserDoc};
+use anyhow::Context;
 use axum::http::HeaderMap;
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use serde::{Deserialize, Serialize};
+
+const USERS: &str = "users";
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
@@ -40,7 +43,10 @@ pub fn verify_token(token: &str, secret: &str) -> AppResult<Claims> {
     .map_err(|e| AppError::Auth(e.to_string()))
 }
 
-pub fn require_auth(headers: &HeaderMap, secret: &str) -> AppResult<Claims> {
+/// Pure token check: extract the bearer token and verify its signature/expiry.
+/// Identity only — the role here is whatever the token carried, which may be
+/// stale. Handlers must go through [`require_auth`] for authorization.
+fn token_claims(headers: &HeaderMap, secret: &str) -> AppResult<Claims> {
     let token = headers
         .get("Authorization")
         .and_then(|v| v.to_str().ok())
@@ -49,17 +55,41 @@ pub fn require_auth(headers: &HeaderMap, secret: &str) -> AppResult<Claims> {
     verify_token(token, secret)
 }
 
-pub fn require_admin(headers: &HeaderMap, secret: &str) -> AppResult<Claims> {
-    let claims = require_auth(headers, secret)?;
+/// Authoritative authentication. Verifies the token, then loads the live account
+/// from the DB so that disabling or deleting a user takes effect on the *next*
+/// request — hard revocation despite the 30-day token lifetime. The returned
+/// claims carry the account's current role from the DB, not the token, so role
+/// changes likewise apply immediately.
+pub async fn require_auth(state: &AppState, headers: &HeaderMap) -> AppResult<Claims> {
+    let claims = token_claims(headers, &state.jwt_secret)?;
+
+    let user: Option<UserDoc> = state.db
+        .fluent()
+        .select()
+        .by_id_in(USERS)
+        .obj()
+        .one(&claims.sub)
+        .await
+        .context("failed to load account for auth")?;
+
+    let user = user.ok_or_else(|| AppError::Auth("account no longer exists".into()))?;
+    if user.disabled {
+        return Err(AppError::Auth("account disabled".into()));
+    }
+
+    Ok(Claims { sub: user.id, role: user.role, exp: claims.exp })
+}
+
+pub async fn require_admin(state: &AppState, headers: &HeaderMap) -> AppResult<Claims> {
+    let claims = require_auth(state, headers).await?;
     if claims.role != "admin" && claims.role != "superadmin" {
         return Err(AppError::Forbidden);
     }
     Ok(claims)
 }
 
-#[allow(dead_code)]
-pub fn require_superadmin(headers: &HeaderMap, secret: &str) -> AppResult<Claims> {
-    let claims = require_auth(headers, secret)?;
+pub async fn require_superadmin(state: &AppState, headers: &HeaderMap) -> AppResult<Claims> {
+    let claims = require_auth(state, headers).await?;
     if claims.role != "superadmin" {
         return Err(AppError::Forbidden);
     }
@@ -121,50 +151,28 @@ mod tests {
         assert!(verify_token(&token, SECRET).is_err());
     }
 
+    // Authorization (role gating, disabled/deleted-account revocation) is
+    // DB-backed and lives in the integration suite. These unit tests cover only
+    // the pure token layer.
+
     #[test]
-    fn require_auth_missing_header() {
-        let err = require_auth(&HeaderMap::new(), SECRET).unwrap_err();
+    fn token_claims_missing_header() {
+        let err = token_claims(&HeaderMap::new(), SECRET).unwrap_err();
         assert!(matches!(err, AppError::Auth(_)));
     }
 
     #[test]
-    fn require_auth_rejects_non_bearer() {
+    fn token_claims_rejects_non_bearer() {
         let mut h = HeaderMap::new();
         h.insert("Authorization", HeaderValue::from_static("Basic dXNlcjpwYXNz"));
-        assert!(require_auth(&h, SECRET).is_err());
+        assert!(token_claims(&h, SECRET).is_err());
     }
 
     #[test]
-    fn require_auth_accepts_valid_bearer() {
+    fn token_claims_accepts_valid_bearer() {
         let token = create_token("user-1", "member", SECRET).unwrap();
-        let claims = require_auth(&headers_with_bearer(&token), SECRET).unwrap();
+        let claims = token_claims(&headers_with_bearer(&token), SECRET).unwrap();
         assert_eq!(claims.sub, "user-1");
-    }
-
-    #[test]
-    fn require_admin_gates_by_role() {
-        let member = create_token("u", "member", SECRET).unwrap();
-        let admin = create_token("u", "admin", SECRET).unwrap();
-        let superadmin = create_token("u", "superadmin", SECRET).unwrap();
-
-        assert!(matches!(
-            require_admin(&headers_with_bearer(&member), SECRET).unwrap_err(),
-            AppError::Forbidden
-        ));
-        assert!(require_admin(&headers_with_bearer(&admin), SECRET).is_ok());
-        assert!(require_admin(&headers_with_bearer(&superadmin), SECRET).is_ok());
-    }
-
-    #[test]
-    fn require_superadmin_rejects_admin() {
-        let admin = create_token("u", "admin", SECRET).unwrap();
-        let superadmin = create_token("u", "superadmin", SECRET).unwrap();
-
-        assert!(matches!(
-            require_superadmin(&headers_with_bearer(&admin), SECRET).unwrap_err(),
-            AppError::Forbidden
-        ));
-        assert!(require_superadmin(&headers_with_bearer(&superadmin), SECRET).is_ok());
     }
 
     #[test]

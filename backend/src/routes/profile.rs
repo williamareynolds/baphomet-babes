@@ -66,7 +66,7 @@ async fn get_my_profile(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> AppResult<Json<Profile>> {
-    let claims = require_auth(&headers, &state.jwt_secret)?;
+    let claims = require_auth(&state, &headers).await?;
 
     let existing: Option<ProfileDoc> = state.db
         .fluent()
@@ -112,7 +112,7 @@ async fn update_my_profile(
     headers: HeaderMap,
     Json(req): Json<UpdateProfileRequest>,
 ) -> AppResult<Json<Profile>> {
-    let claims = require_auth(&headers, &state.jwt_secret)?;
+    let claims = require_auth(&state, &headers).await?;
 
     let existing: Option<ProfileDoc> = state.db
         .fluent()
@@ -154,7 +154,7 @@ async fn list_members(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> AppResult<Json<Vec<Profile>>> {
-    require_auth(&headers, &state.jwt_secret)?;
+    require_auth(&state, &headers).await?;
 
     let docs: Vec<ProfileDoc> = state.db
         .fluent()
@@ -180,7 +180,7 @@ async fn get_member(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> AppResult<Json<Profile>> {
-    let claims = require_auth(&headers, &state.jwt_secret)?;
+    let claims = require_auth(&state, &headers).await?;
 
     let doc: Option<ProfileDoc> = state.db
         .fluent()
@@ -210,7 +210,7 @@ async fn admin_update_profile(
     Path(id): Path<String>,
     Json(req): Json<UpdateProfileRequest>,
 ) -> AppResult<Json<Profile>> {
-    let claims = require_auth(&headers, &state.jwt_secret)?;
+    let claims = require_auth(&state, &headers).await?;
 
     let is_superadmin = claims.role == "superadmin";
     let is_admin = claims.role == "admin" || is_superadmin;

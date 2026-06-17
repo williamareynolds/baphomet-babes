@@ -474,3 +474,86 @@ async fn app_check_blocks_direct_api_access() {
     let (status, _) = send(&app, req("GET", "/members", Some(&token), None)).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
+
+#[tokio::test]
+async fn user_admin_roles_disable_and_guards() {
+    if !emulator_available() { return; }
+    let app = test_app("useradmin").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (admin, admin_id) = invite_and_register(&app, &root, "admin@test.com", "admin1", "admin").await;
+    let (_member, member_id) = invite_and_register(&app, &root, "m@test.com", "member1", "member").await;
+
+    // Only superadmin can list users.
+    let (status, _) = send(&app, req("GET", "/users", Some(&admin), None)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, list) = send(&app, req("GET", "/users", Some(&root), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(list.as_array().unwrap().len(), 3);
+
+    // Only superadmin can update users.
+    let (status, _) = send(&app, req("PUT", &format!("/users/{member_id}"), Some(&admin), Some(json!({ "role": "admin" })))).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Capture the member's pre-promotion token (carries role "member") to prove
+    // role changes are read from the DB per-request, not from the stale token.
+    let (status, login) = send(&app, req("POST", "/auth/login", None, Some(json!({
+        "email": "m@test.com", "password": "hunter2hunter2"
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+    let member_token = login["token"].as_str().unwrap().to_string();
+
+    // Member can't create events yet.
+    let event = json!({ "event_type": "main", "title": "x", "date": "2026-07-01" });
+    let (status, _) = send(&app, req("POST", "/events", Some(&member_token), Some(event.clone()))).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Promote member to admin.
+    let (status, body) = send(&app, req("PUT", &format!("/users/{member_id}"), Some(&root), Some(json!({ "role": "admin" })))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["role"], "admin");
+
+    // The SAME old token now grants admin — authorization uses the live DB role.
+    let (status, _) = send(&app, req("POST", "/events", Some(&member_token), Some(event))).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Invalid role rejected.
+    let (status, _) = send(&app, req("PUT", &format!("/users/{member_id}"), Some(&root), Some(json!({ "role": "wizard" })))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // Superadmin cannot change their own role/status (anti-lockout).
+    let me = send(&app, req("GET", "/users", Some(&root), None)).await.1;
+    let my_id = me.as_array().unwrap().iter()
+        .find(|u| u["role"] == "superadmin").unwrap()["id"].as_str().unwrap().to_string();
+    let (status, _) = send(&app, req("PUT", &format!("/users/{my_id}"), Some(&root), Some(json!({ "disabled": true })))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // Disable the admin account.
+    let (status, body) = send(&app, req("PUT", &format!("/users/{admin_id}"), Some(&root), Some(json!({ "disabled": true })))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["disabled"], true);
+
+    // Hard revocation: their ALREADY-ISSUED token is rejected on a protected
+    // route, not just at login — the per-request DB check sees disabled=true.
+    let (status, body) = send(&app, req("GET", "/events", Some(&admin), None)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(body["error"], "account disabled");
+
+    // And they can no longer log in.
+    let (status, body) = send(&app, req("POST", "/auth/login", None, Some(json!({
+        "email": "admin@test.com", "password": "hunter2hunter2"
+    })))).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(body["error"], "account disabled");
+
+    // Re-enable, login works again.
+    let (status, _) = send(&app, req("PUT", &format!("/users/{admin_id}"), Some(&root), Some(json!({ "disabled": false })))).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = send(&app, req("POST", "/auth/login", None, Some(json!({
+        "email": "admin@test.com", "password": "hunter2hunter2"
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Unknown user id → 404.
+    let (status, _) = send(&app, req("PUT", "/users/does-not-exist", Some(&root), Some(json!({ "role": "member" })))).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}

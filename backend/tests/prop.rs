@@ -1,5 +1,4 @@
-use axum::http::{HeaderMap, HeaderValue};
-use backend::auth::{create_token, require_auth, verify_token};
+use backend::auth::{create_token, verify_token};
 use backend::models::{EventDoc, ProfileDoc};
 use proptest::prelude::*;
 use shared::ProfileLink;
@@ -42,16 +41,6 @@ proptest! {
     #[test]
     fn verify_never_panics(garbage in "\\PC{0,256}", secret in "[ -~]{8,32}") {
         let _ = verify_token(&garbage, &secret);
-    }
-
-    /// require_auth never panics on arbitrary Authorization header values.
-    #[test]
-    fn require_auth_never_panics(value in "[ -~]{0,128}") {
-        let mut headers = HeaderMap::new();
-        if let Ok(hv) = HeaderValue::from_str(&value) {
-            headers.insert("Authorization", hv);
-        }
-        let _ = require_auth(&headers, "some-secret");
     }
 
     /// ProfileDoc (Firestore wire format) roundtrips through JSON losslessly,

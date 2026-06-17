@@ -1,6 +1,7 @@
 use shared::{
     AuthResponse, CreateEventRequest, CreateInviteRequest, Event, InviteCode, LoginRequest,
-    Profile, RegisterRequest, UpdateEventRequest, UpdateProfileRequest,
+    Profile, RegisterRequest, UpdateEventRequest, UpdateProfileRequest, UpdateUserRequest,
+    UserSummary,
 };
 
 /// API base chosen at runtime from the page's hostname, so the URL can never be
@@ -157,4 +158,12 @@ pub async fn update_event(id: &str, req: UpdateEventRequest, token: &str) -> Res
 
 pub async fn delete_event(id: &str, token: &str) -> Result<(), String> {
     delete(&format!("/events/{id}"), token).await
+}
+
+pub async fn fetch_users(token: &str) -> Result<Vec<UserSummary>, String> {
+    get("/users", token).await
+}
+
+pub async fn update_user(id: &str, req: UpdateUserRequest, token: &str) -> Result<UserSummary, String> {
+    put_json(&format!("/users/{id}"), &req, token).await
 }

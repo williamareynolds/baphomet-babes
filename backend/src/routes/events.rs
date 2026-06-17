@@ -34,7 +34,7 @@ async fn list_events(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> AppResult<Json<Vec<Event>>> {
-    require_auth(&headers, &state.jwt_secret)?;
+    require_auth(&state, &headers).await?;
 
     let mut docs: Vec<EventDoc> = state.db
         .fluent()
@@ -54,7 +54,7 @@ async fn create_event(
     headers: HeaderMap,
     Json(req): Json<CreateEventRequest>,
 ) -> AppResult<Json<Event>> {
-    require_admin(&headers, &state.jwt_secret)?;
+    require_admin(&state, &headers).await?;
 
     if req.event_type != "main" && req.event_type != "special" {
         return Err(AppError::BadRequest("event_type must be 'main' or 'special'".into()));
@@ -96,7 +96,7 @@ async fn update_event(
     Path(id): Path<String>,
     Json(req): Json<UpdateEventRequest>,
 ) -> AppResult<Json<Event>> {
-    require_admin(&headers, &state.jwt_secret)?;
+    require_admin(&state, &headers).await?;
 
     let existing: Option<EventDoc> = state.db
         .fluent()
@@ -138,7 +138,7 @@ async fn delete_event(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> AppResult<()> {
-    require_admin(&headers, &state.jwt_secret)?;
+    require_admin(&state, &headers).await?;
 
     let exists: Option<EventDoc> = state.db
         .fluent()

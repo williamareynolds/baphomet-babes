@@ -18,7 +18,7 @@ async fn create_invite(
     headers: HeaderMap,
     Json(req): Json<CreateInviteRequest>,
 ) -> AppResult<Json<InviteCode>> {
-    let claims = require_admin(&headers, &state.jwt_secret)?;
+    let claims = require_admin(&state, &headers).await?;
 
     match (claims.role.as_str(), req.role.as_str()) {
         ("superadmin", "admin" | "member") => {}
@@ -67,7 +67,7 @@ async fn list_invites(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> AppResult<Json<Vec<InviteCode>>> {
-    require_admin(&headers, &state.jwt_secret)?;
+    require_admin(&state, &headers).await?;
 
     let docs: Vec<InviteCodeDoc> = state.db
         .fluent()
@@ -95,7 +95,7 @@ async fn delete_invite(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> AppResult<Json<()>> {
-    let claims = require_admin(&headers, &state.jwt_secret)?;
+    let claims = require_admin(&state, &headers).await?;
 
     let doc: Option<InviteCodeDoc> = state.db
         .fluent()

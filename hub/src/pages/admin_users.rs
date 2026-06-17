@@ -1,0 +1,139 @@
+use auth_client::AuthUser;
+use crate::api;
+use crate::components::admin_nav::AdminNav;
+use leptos::prelude::*;
+use shared::{UpdateUserRequest, UserSummary};
+use thaw::{Button, ButtonAppearance, Card, Field, Select};
+
+#[component]
+pub fn AdminUsersPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
+    let is_superadmin = move || auth.get().map(|u| u.is_superadmin()).unwrap_or(false);
+    let my_id = move || auth.get().map(|u| u.id).unwrap_or_default();
+
+    let (refresh, set_refresh) = signal(0u32);
+    let users: RwSignal<Option<Result<Vec<UserSummary>, String>>> = RwSignal::new(None);
+
+    Effect::new(move |_| {
+        let _ = refresh.get();
+        let token = auth.get().map(|u| u.token);
+        wasm_bindgen_futures::spawn_local(async move {
+            let result = match token {
+                None => return,
+                Some(t) => api::fetch_users(&t).await,
+            };
+            users.set(Some(result));
+        });
+    });
+
+    let (error, set_error) = signal(String::new());
+
+    // Apply a partial update (role and/or disabled) to one user, then refresh.
+    let apply = move |id: String, req: UpdateUserRequest| {
+        set_error.set(String::new());
+        let Some(user) = auth.get() else { return };
+        wasm_bindgen_futures::spawn_local(async move {
+            match api::update_user(&id, req, &user.token).await {
+                Ok(_) => set_refresh.update(|n| *n += 1),
+                Err(e) => set_error.set(e),
+            }
+        });
+    };
+
+    view! {
+        <main>
+            <Show
+                when=is_superadmin
+                fallback=|| view! { <p class="error">"Access denied."</p> }
+            >
+                <h1>"Admin"</h1>
+                <AdminNav active="users" is_superadmin=true />
+
+                <Show when=move || !error.get().is_empty()>
+                    <p class="error">{move || error.get()}</p>
+                </Show>
+
+                <h2 class="section-heading">"All Accounts"</h2>
+                {move || match users.get() {
+                    None => view! { <p>"Loading..."</p> }.into_any(),
+                    Some(Err(e)) => view! { <p class="error">{e}</p> }.into_any(),
+                    Some(Ok(list)) => view! {
+                        <div>
+                            {list.into_iter().map(|u| {
+                                let is_self = u.id == my_id();
+                                let disabled = u.disabled;
+
+                                // Role selector — changing it pushes an update.
+                                let role_sig = RwSignal::new(u.role.clone());
+                                let role_id = u.id.clone();
+                                let apply_role = apply;
+                                Effect::new(move |prev: Option<String>| {
+                                    let next = role_sig.get();
+                                    // Skip the initial run so we only react to edits.
+                                    if let Some(p) = prev {
+                                        if p != next {
+                                            apply_role(role_id.clone(), UpdateUserRequest {
+                                                role: Some(next.clone()),
+                                                disabled: None,
+                                            });
+                                        }
+                                    }
+                                    next
+                                });
+
+                                let toggle_id = u.id.clone();
+                                let apply_toggle = apply;
+                                let on_toggle = move |_| apply_toggle(toggle_id.clone(), UpdateUserRequest {
+                                    role: None,
+                                    disabled: Some(!disabled),
+                                });
+
+                                view! {
+                                    <Card>
+                                        <div class="admin-row">
+                                            <div>
+                                                <strong>{u.username.clone()}</strong>
+                                                <span style="margin-left:0.75rem;color:#bdafb2;font-size:0.8rem;">
+                                                    {u.email.clone()}
+                                                </span>
+                                                <Show when=move || disabled>
+                                                    <span style="margin-left:0.75rem;color:#e09aa6;font-size:0.8rem;">
+                                                        "disabled"
+                                                    </span>
+                                                </Show>
+                                            </div>
+                                            <div class="admin-actions">
+                                                {if is_self {
+                                                    view! {
+                                                        <span style="color:#bdafb2;font-size:0.8rem;">
+                                                            {format!("{} (you)", u.role)}
+                                                        </span>
+                                                    }.into_any()
+                                                } else {
+                                                    view! {
+                                                        <Field label="Role">
+                                                            <Select value=role_sig>
+                                                                <option value="member">"Member"</option>
+                                                                <option value="admin">"Admin"</option>
+                                                                <option value="superadmin">"Superadmin"</option>
+                                                            </Select>
+                                                        </Field>
+                                                        <Button
+                                                            appearance=ButtonAppearance::Secondary
+                                                            on_click=on_toggle
+                                                        >
+                                                            {if disabled { "Enable" } else { "Disable" }}
+                                                        </Button>
+                                                    }.into_any()
+                                                }}
+                                            </div>
+                                        </div>
+                                    </Card>
+                                }
+                            }).collect::<Vec<_>>()}
+                        </div>
+                    }.into_any(),
+                }}
+            </Show>
+        </main>
+    }
+}

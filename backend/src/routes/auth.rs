@@ -35,6 +35,10 @@ async fn login(
     let user = users.into_iter().next()
         .ok_or_else(|| AppError::Auth("invalid credentials".into()))?;
 
+    if user.disabled {
+        return Err(AppError::Auth("account disabled".into()));
+    }
+
     let parsed = PasswordHash::new(&user.password_hash)
         .map_err(|_| AppError::Auth("invalid credentials".into()))?;
     Argon2::default()
@@ -128,6 +132,7 @@ async fn register(
             username: req.username.clone(),
             password_hash: hash,
             role: role.clone(),
+            disabled: false,
             created_at: now,
         })
         .execute()

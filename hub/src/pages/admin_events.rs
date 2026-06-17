@@ -10,6 +10,7 @@ use thaw::{
 #[component]
 pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let is_admin = move || auth.get().map(|u| u.is_admin()).unwrap_or(false);
+    let is_superadmin = move || auth.get().map(|u| u.is_superadmin()).unwrap_or(false);
 
     // --- Events ---
     let (event_refresh, set_event_refresh) = signal(0u32);
@@ -120,7 +121,7 @@ pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                 fallback=|| view! { <p class="error">"Access denied."</p> }
             >
                 <h1>"Admin"</h1>
-                <AdminNav active="events" />
+                <AdminNav active="events" is_superadmin=is_superadmin() />
 
                 <Card>
                     <h2>"Create Event"</h2>
