@@ -32,11 +32,23 @@ pub async fn app_check_token() -> Option<String> {
     js_app_check_token().await.ok().and_then(|v| v.as_string())
 }
 
-/// Ask for notification permission and mint an FCM device token. `None` if the
-/// browser doesn't support push, the user declined, or the bridge is absent
-/// (local dev).
-pub async fn enable_push() -> Option<String> {
-    js_enable_push().await.ok().and_then(|v| v.as_string())
+/// Ask for notification permission and mint an FCM device token. Returns the
+/// token on success, or an error message explaining why it failed (unsupported
+/// browser, permission denied, getToken error, dev build, …) — surfaced in the
+/// UI so failures (especially on iOS) are diagnosable.
+pub async fn enable_push() -> Result<String, String> {
+    match js_enable_push().await {
+        Ok(v) => {
+            let s = v
+                .as_string()
+                .unwrap_or_else(|| "push bridge returned a non-string".to_string());
+            match s.strip_prefix("ERR:") {
+                Some(msg) => Err(msg.to_string()),
+                None => Ok(s),
+            }
+        }
+        Err(_) => Err("push bridge unavailable".to_string()),
+    }
 }
 
 /// Current notification permission state: "granted" | "denied" | "default" |

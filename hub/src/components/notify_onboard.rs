@@ -40,7 +40,7 @@ pub fn NotifyOnboard(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let on_enable = move |_| {
         let Some(user) = auth.get() else { return };
         spawn_local(async move {
-            if let Some(tok) = enable_push().await {
+            if let Ok(tok) = enable_push().await {
                 let _ = api::register_push_token(&tok, &user.token).await;
                 crate::push::save(&tok);
             }

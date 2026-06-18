@@ -482,7 +482,9 @@
       // readable, but enabling push is a no-op until the prod block overrides it.
       window.__notifPermission = () =>
         typeof Notification === "undefined" ? "unsupported" : Notification.permission;
-      window.__enablePush = async () => null;
+      // Returns the FCM token on success, or an "ERR:<reason>" string on failure
+      // so the UI can show why (especially useful on iOS).
+      window.__enablePush = async () => "ERR:push isn't configured here (dev build)";
 
       if (location.hostname.endsWith("baphometbabes.com")) {
         try {
@@ -536,17 +538,19 @@
             );
             window.__enablePush = async () => {
               try {
-                if (typeof Notification === "undefined") return null;
+                if (typeof Notification === "undefined") {
+                  return "ERR:this browser has no Notification API (on iPhone, install to the Home Screen first)";
+                }
                 const perm = await Notification.requestPermission();
-                if (perm !== "granted") return null;
+                if (perm !== "granted") return "ERR:permission " + perm;
                 const tok = await getMessagingToken(messaging, {
                   vapidKey: FCM_VAPID_KEY,
                   serviceWorkerRegistration: swReg,
                 });
-                return tok || null;
+                return tok || "ERR:no token returned";
               } catch (e) {
                 console.error("enablePush failed:", e);
-                return null;
+                return "ERR:" + (e && e.message ? e.message : String(e));
               }
             };
           } catch (e) {

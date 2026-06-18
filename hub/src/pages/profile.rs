@@ -69,14 +69,12 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
         notif_msg.set(String::new());
         wasm_bindgen_futures::spawn_local(async move {
             match enable_push().await {
-                Some(tok) => {
+                Ok(tok) => {
                     let _ = api::register_push_token(&tok, &user.token).await;
                     crate::push::save(&tok);
                     notif_msg.set("Push enabled on this device.".into());
                 }
-                None => notif_msg.set(
-                    "Couldn't enable push here. On iPhone, install the app to your Home Screen first, then try again.".into(),
-                ),
+                Err(e) => notif_msg.set(format!("Couldn't enable push: {e}")),
             }
             perm.set(notif_permission());
         });
