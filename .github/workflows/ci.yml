@@ -220,7 +220,7 @@ jobs:
             --allow-unauthenticated \
             --min-instances 0 \
             --max-instances 3 \
-            --set-env-vars "^@^GCP_PROJECT_ID=$PROJECT_ID@JWT_SECRET=${{ secrets.JWT_SECRET }}@SUPERADMIN_INVITE_CODE=${{ secrets.SUPERADMIN_INVITE_CODE }}@ALLOWED_ORIGINS=https://baphometbabes.com@FCM_ENABLE=true"
+            --set-env-vars "^@^GCP_PROJECT_ID=$PROJECT_ID@JWT_SECRET=${{ secrets.JWT_SECRET }}@SUPERADMIN_INVITE_CODE=${{ secrets.SUPERADMIN_INVITE_CODE }}@ALLOWED_ORIGINS=https://baphometbabes.com@FCM_ENABLE=true@RUST_LOG=info"
 
   deploy-hub:
     name: Deploy hub (Firebase Hosting)
