@@ -1,6 +1,7 @@
 pub mod app_check;
 pub mod auth;
 pub mod error;
+pub mod fcm;
 pub mod models;
 pub mod routes;
 
@@ -20,6 +21,9 @@ pub struct AppState {
     /// When present, every non-health request must carry a valid App Check
     /// token. `None` disables enforcement (dev, tests, pre-rollout).
     pub app_check: Option<AppCheck>,
+    /// Firebase Cloud Messaging sender. `None` in dev/tests (no metadata
+    /// server), where notification pushes become no-ops.
+    pub fcm: Option<fcm::Fcm>,
 }
 
 /// Rate limit knobs — relaxed in tests, strict in production.
@@ -102,6 +106,7 @@ pub fn build_app(state: AppState, allowed_origins: Option<&str>, rate_limit: Rat
         .nest("/profile", routes::profile::profile_router())
         .nest("/members", routes::profile::members_router())
         .nest("/users", routes::users::router())
+        .nest("/notifications", routes::notifications::router())
         .layer(app_check_layer)
         .with_state(state)
         .layer(cors)

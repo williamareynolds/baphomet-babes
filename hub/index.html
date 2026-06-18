@@ -8,6 +8,9 @@
     <link data-trunk rel="copy-dir" href="public"/>
     <!-- Also place the service worker at the site root so its scope is "/". -->
     <link data-trunk rel="copy-file" href="public/sw.js"/>
+    <!-- FCM background worker must also live at the root (getToken registers
+         "/firebase-messaging-sw.js"). -->
+    <link data-trunk rel="copy-file" href="public/firebase-messaging-sw.js"/>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
@@ -228,6 +231,10 @@
 
       .badge-main { background: #c41e3a; color: #fff; }
       .badge-special { background: transparent; border: 1px solid #4a3a6e; color: #bda4e6; }
+      /* Notification channel badges. */
+      .badge-announcements { background: #c41e3a; color: #fff; }
+      .badge-general { background: transparent; border: 1px solid #6e5a3a; color: #e6cda4; }
+      .badge-movie_night { background: transparent; border: 1px solid #3a5a6e; color: #a4cfe6; }
 
       /* ---- Admin sub-navigation (events / invites tabs) ---- */
       .admin-tabs {
@@ -395,6 +402,28 @@
         .next-feature .feature-title { font-size: 2.4rem; }
       }
 
+      /* ---- Notifications inbox ---- */
+      .notif-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+      .notif-header h1 { margin-bottom: 0; }
+      .notif-row { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+      .notif-time { font-family: 'IBM Plex Mono', monospace; font-size: 0.62rem; letter-spacing: 0.06em; color: #95868f; }
+      .notif-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.5rem; letter-spacing: 0.04em; color: #f3ebe3; text-transform: none; margin: 0.5rem 0 0.2rem; }
+      .notif-body { color: #d8cdcf; white-space: pre-wrap; }
+
+      /* Onboarding nudge — same chrome as the PWA bars, with a calmer tone. */
+      .notif-onboard {
+        background: #1a1320;
+        color: #dcccbe;
+        border-bottom: 1px solid rgba(196, 30, 58, 0.25);
+        flex-wrap: wrap;
+      }
+
       code { font-family: 'IBM Plex Mono', monospace; }
 
       small { font-family: 'IBM Plex Mono', monospace; font-size: 0.7rem; }
@@ -449,6 +478,12 @@
       // Check unenforced there, so requests still succeed.
       window.__appCheckToken = async () => null;
 
+      // Notification bridges. Defaults work in dev (no Firebase): permission is
+      // readable, but enabling push is a no-op until the prod block overrides it.
+      window.__notifPermission = () =>
+        typeof Notification === "undefined" ? "unsupported" : Notification.permission;
+      window.__enablePush = async () => null;
+
       if (location.hostname.endsWith("baphometbabes.com")) {
         try {
           const { initializeApp } = await import(
@@ -463,6 +498,7 @@
             apiKey: "AIzaSyCvALBMnTPVeeips_paWMxFW4N0-wEfBOo",
             authDomain: "baphomet-babes.firebaseapp.com",
             projectId: "baphomet-babes",
+            messagingSenderId: "780823612423",
             appId: "1:780823612423:web:ad385cf10a5b4d7f076ea2",
           };
           // reCAPTCHA v3 SITE key (public). The secret key is never used here;
@@ -482,6 +518,40 @@
               return null;
             }
           };
+
+          // ---- Firebase Cloud Messaging (push notifications) ----
+          // The Web Push certificate (VAPID) key pair lives in Firebase Console
+          // → Project settings → Cloud Messaging → Web configuration. Paste its
+          // public key here. Until then getToken fails gracefully and push stays
+          // off (the inbox + prefs still work).
+          const FCM_VAPID_KEY = "REPLACE_WITH_WEB_PUSH_CERTIFICATE_PUBLIC_KEY";
+          try {
+            const { getMessaging, getToken: getMessagingToken } = await import(
+              "https://www.gstatic.com/firebasejs/11.1.0/firebase-messaging.js"
+            );
+            const messaging = getMessaging(app);
+            // Dedicated SW for background push (separate from our offline sw.js).
+            const swReg = await navigator.serviceWorker.register(
+              "/firebase-messaging-sw.js"
+            );
+            window.__enablePush = async () => {
+              try {
+                if (typeof Notification === "undefined") return null;
+                const perm = await Notification.requestPermission();
+                if (perm !== "granted") return null;
+                const tok = await getMessagingToken(messaging, {
+                  vapidKey: FCM_VAPID_KEY,
+                  serviceWorkerRegistration: swReg,
+                });
+                return tok || null;
+              } catch (e) {
+                console.error("enablePush failed:", e);
+                return null;
+              }
+            };
+          } catch (e) {
+            console.error("FCM init failed:", e);
+          }
         } catch (e) {
           console.error("App Check init failed:", e);
         }

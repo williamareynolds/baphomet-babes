@@ -32,6 +32,7 @@ async fn test_app(name: &str) -> Router {
         jwt_secret: JWT_SECRET.into(),
         superadmin_invite_code: BOOTSTRAP.into(),
         app_check: None,
+        fcm: None,
     };
     // Effectively unlimited so functional tests never trip the governor.
     build_app(state, None, RateLimit { per_second: 1, burst: 1_000_000 })
@@ -315,6 +316,85 @@ async fn announcements_crud_and_permissions() {
 }
 
 #[tokio::test]
+async fn notifications_feed_prefs_tokens_and_broadcast() {
+    if !emulator_available() { return; }
+    let app = test_app("notifications").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, _) = invite_and_register(&app, &root, "m@test.com", "member1", "member").await;
+
+    // Prefs default to all-on.
+    let (status, prefs) = send(&app, req("GET", "/notifications/prefs", Some(&member), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(prefs["announcements"], true);
+    assert_eq!(prefs["general"], true);
+    assert_eq!(prefs["movie_night"], true);
+
+    // Update one channel; others persist.
+    let (status, prefs) = send(&app, req("PUT", "/notifications/prefs", Some(&member), Some(json!({ "general": false })))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(prefs["general"], false);
+    assert_eq!(prefs["announcements"], true);
+    // Survives a reload.
+    let (_, prefs) = send(&app, req("GET", "/notifications/prefs", Some(&member), None)).await;
+    assert_eq!(prefs["general"], false);
+
+    // Device token register + unregister; empty token rejected.
+    let (status, _) = send(&app, req("PUT", "/notifications/token", Some(&member), Some(json!({ "token": "device-tok-1" })))).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, body) = send(&app, req("PUT", "/notifications/token", Some(&member), Some(json!({ "token": "  " })))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap().contains("token"));
+    let (status, _) = send(&app, req("DELETE", "/notifications/token", Some(&member), Some(json!({ "token": "device-tok-1" })))).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Anonymous cannot read the feed.
+    let (status, _) = send(&app, req("GET", "/notifications", None, None)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    // Posting an announcement and creating an event both land in the feed.
+    let (status, _) = send(&app, req("POST", "/announcements", Some(&root), Some(json!({
+        "title": "Hi", "body": "welcome", "poll_embed_url": null
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = send(&app, req("POST", "/events", Some(&root), Some(json!({
+        "event_type": "main", "title": "The Crow", "date": "2030-10-31"
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, feed) = send(&app, req("GET", "/notifications", Some(&member), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    let feed = feed.as_array().unwrap();
+    assert_eq!(feed.len(), 2);
+    let channels: Vec<&str> = feed.iter().map(|n| n["channel"].as_str().unwrap()).collect();
+    assert!(channels.contains(&"announcements"));
+    assert!(channels.contains(&"movie_night"));
+
+    // Broadcast: members can't; admins can; it shows up on the General channel.
+    let (status, _) = send(&app, req("POST", "/notifications/broadcast", Some(&member), Some(json!({
+        "title": "x", "body": "y"
+    })))).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, body) = send(&app, req("POST", "/notifications/broadcast", Some(&root), Some(json!({
+        "title": "  ", "body": "y"
+    })))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap().contains("title"));
+    let (status, _) = send(&app, req("POST", "/notifications/broadcast", Some(&root), Some(json!({
+        "title": "Meetup Saturday", "body": "Park at 2pm"
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (_, feed) = send(&app, req("GET", "/notifications", Some(&member), None)).await;
+    let feed = feed.as_array().unwrap();
+    assert_eq!(feed.len(), 3);
+    // The broadcast shows up on the General channel. (Position isn't asserted:
+    // all three records can land in the same wall-clock second, and ordering
+    // within a second is unspecified.)
+    let general = feed.iter().find(|n| n["channel"] == "general").expect("general notification present");
+    assert_eq!(general["title"], "Meetup Saturday");
+}
+
+#[tokio::test]
 async fn profile_lifecycle_and_visibility() {
     if !emulator_available() { return; }
     let app = test_app("profiles").await;
@@ -412,6 +492,7 @@ async fn rate_limiter_returns_json_429() {
         jwt_secret: JWT_SECRET.into(),
         superadmin_invite_code: BOOTSTRAP.into(),
         app_check: None,
+        fcm: None,
     };
     let app = build_app(state, None, RateLimit { per_second: 1, burst: 2 });
 
@@ -450,6 +531,7 @@ async fn cors_allows_configured_origin_only() {
         jwt_secret: JWT_SECRET.into(),
         superadmin_invite_code: BOOTSTRAP.into(),
         app_check: None,
+        fcm: None,
     };
     let app = build_app(
         state,
@@ -493,6 +575,7 @@ async fn app_check_blocks_direct_api_access() {
         // rejected without ever contacting Google's JWKS endpoint, so this test
         // needs no network.
         app_check: Some(backend::app_check::AppCheck::new("780823612423")),
+        fcm: None,
     };
     let app = build_app(state, None, RateLimit { per_second: 1, burst: 1_000_000 });
 

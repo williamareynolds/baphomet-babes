@@ -1,8 +1,8 @@
 use crate::api;
-use auth_client::AuthUser;
+use auth_client::{AuthUser, enable_push, notif_permission};
 use leptos::prelude::*;
-use shared::{Profile, ProfileLink, UpdateProfileRequest};
-use thaw::{Button, ButtonAppearance, ButtonType, Field, Input, Switch, Textarea};
+use shared::{Profile, ProfileLink, UpdateNotificationPrefs, UpdateProfileRequest};
+use thaw::{Button, ButtonAppearance, ButtonType, Card, Field, Input, Switch, Textarea};
 
 #[component]
 pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
@@ -43,6 +43,60 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
             });
         }
     });
+
+    // ---- Notification settings ----
+    let perm = RwSignal::new(notif_permission());
+    let ch_announce = RwSignal::new(true);
+    let ch_general = RwSignal::new(true);
+    let ch_movie = RwSignal::new(true);
+    let notif_msg = RwSignal::new(String::new());
+
+    Effect::new(move |_| {
+        if let Some(user) = auth.get() {
+            let token = user.token.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                if let Ok(p) = api::fetch_notif_prefs(&token).await {
+                    ch_announce.set(p.announcements);
+                    ch_general.set(p.general);
+                    ch_movie.set(p.movie_night);
+                }
+            });
+        }
+    });
+
+    let on_enable_push = move |_| {
+        let Some(user) = auth.get() else { return };
+        notif_msg.set(String::new());
+        wasm_bindgen_futures::spawn_local(async move {
+            match enable_push().await {
+                Some(tok) => {
+                    let _ = api::register_push_token(&tok, &user.token).await;
+                    crate::push::save(&tok);
+                    notif_msg.set("Push enabled on this device.".into());
+                }
+                None => notif_msg.set(
+                    "Couldn't enable push here. On iPhone, install the app to your Home Screen first, then try again.".into(),
+                ),
+            }
+            perm.set(notif_permission());
+        });
+    };
+
+    let save_prefs = move |_| {
+        let Some(user) = auth.get() else { return };
+        notif_msg.set(String::new());
+        let req = UpdateNotificationPrefs {
+            announcements: Some(ch_announce.get()),
+            general: Some(ch_general.get()),
+            movie_night: Some(ch_movie.get()),
+        };
+        wasm_bindgen_futures::spawn_local(async move {
+            match api::update_notif_prefs(req, &user.token).await {
+                Ok(_) => notif_msg.set("Notification settings saved.".into()),
+                Err(e) => notif_msg.set(e),
+            }
+        });
+    };
 
     let handle_save = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
@@ -146,6 +200,44 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                         {move || if saving.get() { "Saving…" } else { "Save Profile" }}
                     </Button>
                 </form>
+
+                <Card>
+                    <h2 id="notifications">"Notifications"</h2>
+                    <Show
+                        when=move || perm.get() == "granted"
+                        fallback=move || view! {
+                            <p style="color:#bdafb2;margin-bottom:0.75rem;">
+                                "Turn on push notifications for this device."
+                            </p>
+                            <Button appearance=ButtonAppearance::Primary on_click=on_enable_push>
+                                "Enable Push"
+                            </Button>
+                        }
+                    >
+                        <p style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#93d8b4;margin-bottom:0.75rem;">
+                            "Push enabled on this device."
+                        </p>
+                    </Show>
+
+                    <p style="font-family:'IBM Plex Mono',monospace;font-size:0.6rem;letter-spacing:0.1em;text-transform:uppercase;color:#ad9ea4;margin:1.25rem 0 0.5rem;">
+                        "Channels"
+                    </p>
+                    <div style="display:flex;flex-direction:column;gap:0.6rem;">
+                        <Switch checked=ch_announce label="Announcements" />
+                        <Switch checked=ch_general label="General" />
+                        <Switch checked=ch_movie label="Movie Nights" />
+                    </div>
+
+                    <Show when=move || !notif_msg.get().is_empty()>
+                        <p class="success" style="margin-top:0.75rem;">{move || notif_msg.get()}</p>
+                    </Show>
+
+                    <div style="margin-top:1rem;">
+                        <Button appearance=ButtonAppearance::Primary on_click=save_prefs>
+                            "Save Notification Settings"
+                        </Button>
+                    </div>
+                </Card>
             </Show>
         </main>
     }

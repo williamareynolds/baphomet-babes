@@ -1,5 +1,6 @@
 pub mod about;
 pub mod admin_announcements;
+pub mod admin_broadcast;
 pub mod admin_events;
 pub mod admin_invites;
 pub mod admin_users;
@@ -7,5 +8,6 @@ pub mod announcements;
 pub mod login;
 pub mod members;
 pub mod movie_nights;
+pub mod notifications;
 pub mod profile;
 pub mod vote;

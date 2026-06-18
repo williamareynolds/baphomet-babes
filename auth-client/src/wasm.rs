@@ -11,6 +11,17 @@ extern "C" {
     // an Err rather than a hard panic.
     #[wasm_bindgen(js_namespace = window, js_name = __appCheckToken, catch)]
     async fn js_app_check_token() -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsValue>;
+
+    // Defined by the FCM bootstrap in index.html. Requests notification
+    // permission and returns a Promise<string|null> FCM registration token.
+    // Resolves to null when unsupported, denied, or in dev.
+    #[wasm_bindgen(js_namespace = window, js_name = __enablePush, catch)]
+    async fn js_enable_push() -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsValue>;
+
+    // Current Notification permission: "granted" | "denied" | "default" |
+    // "unsupported". Synchronous.
+    #[wasm_bindgen(js_namespace = window, js_name = __notifPermission, catch)]
+    fn js_notif_permission() -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsValue>;
 }
 
 /// Fresh Firebase App Check token for this app instance, or `None` when the
@@ -19,6 +30,22 @@ extern "C" {
 /// environments where the backend isn't enforcing App Check.
 pub async fn app_check_token() -> Option<String> {
     js_app_check_token().await.ok().and_then(|v| v.as_string())
+}
+
+/// Ask for notification permission and mint an FCM device token. `None` if the
+/// browser doesn't support push, the user declined, or the bridge is absent
+/// (local dev).
+pub async fn enable_push() -> Option<String> {
+    js_enable_push().await.ok().and_then(|v| v.as_string())
+}
+
+/// Current notification permission state: "granted" | "denied" | "default" |
+/// "unsupported".
+pub fn notif_permission() -> String {
+    js_notif_permission()
+        .ok()
+        .and_then(|v| v.as_string())
+        .unwrap_or_else(|| "unsupported".to_string())
 }
 
 /// Save auth: JWT → localStorage (this domain only), identity → cross-domain cookie (no JWT).

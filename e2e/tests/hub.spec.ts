@@ -16,6 +16,10 @@ async function login(page: Page, email = EMAIL, password = PASSWORD) {
   await page.click('form button[type="submit"]');
   // Wait for auth to land (saved to localStorage) before navigating further.
   await expect(page.getByRole("button", { name: "Logout" })).toBeVisible();
+  // Clear the notification onboarding bar so its sticky chrome can't overlay
+  // the targets below it.
+  const dismiss = page.getByRole("button", { name: "Dismiss" });
+  if (await dismiss.isVisible().catch(() => false)) await dismiss.click();
 }
 
 test("register the bootstrap superadmin", async ({ page }) => {
@@ -70,7 +74,9 @@ test("edit profile and publish it", async ({ page }) => {
   await page
     .getByPlaceholder("A few words about yourself…")
     .fill("Founding member. Crafts, cosmos, and cinema.");
-  await page.getByRole("switch").check();
+  // The first switch is "Public profile" (the notification-channel switches
+  // follow it further down the page).
+  await page.getByRole("switch").first().check();
 
   await page.getByRole("button", { name: "Save Profile" }).click();
   await expect(page.locator(".success")).toHaveText("Profile saved.");
@@ -80,7 +86,7 @@ test("edit profile and publish it", async ({ page }) => {
   await expect(
     page.getByPlaceholder("Leave blank to use username"),
   ).toHaveValue("Root Babe");
-  await expect(page.getByRole("switch")).toBeChecked();
+  await expect(page.getByRole("switch").first()).toBeChecked();
 });
 
 test("published profile appears in the member directory", async ({ page }) => {
@@ -156,4 +162,53 @@ test("movie nights features the next screening and dates it nicely", async ({
   await expect(
     page.locator(".mn-row").filter({ hasText: "The Crow (1994)" }),
   ).toBeVisible();
+});
+
+test("profile exposes notification settings", async ({ page }) => {
+  await login(page);
+  await page.goto("/profile");
+  await expect(
+    page.getByRole("heading", { name: "Notifications" }),
+  ).toBeVisible();
+  // is_public switch + three channel switches.
+  await expect(page.getByRole("switch")).toHaveCount(4);
+  await expect(
+    page.getByRole("button", { name: "Save Notification Settings" }),
+  ).toBeVisible();
+});
+
+test("an admin announcement lands in the notifications inbox", async ({
+  page,
+}) => {
+  await login(page);
+  await page.goto("/admin/announcements");
+  await page.getByPlaceholder("What's happening").fill("Spooky Season Kickoff");
+  await page.getByPlaceholder("Tell the members…").fill("Costumes encouraged.");
+  await page.getByRole("button", { name: "Post Announcement" }).click();
+  await expect(page.locator(".success")).toHaveText("Announcement posted!");
+
+  await page.goto("/notifications");
+  const card = page
+    .locator(".thaw-card")
+    .filter({ hasText: "Spooky Season Kickoff" });
+  await expect(card).toBeVisible();
+  await expect(card.locator(".badge-announcements")).toHaveText("Announcement");
+});
+
+test("an admin broadcast reaches the inbox on the General channel", async ({
+  page,
+}) => {
+  await login(page);
+  await page.goto("/admin/broadcast");
+  await page.getByPlaceholder("Short headline").fill("Bingo Night");
+  await page
+    .getByPlaceholder("What do you want people to know?")
+    .fill("This Friday at 7.");
+  await page.getByRole("button", { name: "Send Broadcast" }).click();
+  await expect(page.locator(".success")).toContainText("Broadcast sent");
+
+  await page.goto("/notifications");
+  const card = page.locator(".thaw-card").filter({ hasText: "Bingo Night" });
+  await expect(card).toBeVisible();
+  await expect(card.locator(".badge-general")).toHaveText("General");
 });

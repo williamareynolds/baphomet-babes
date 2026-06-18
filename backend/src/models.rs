@@ -47,6 +47,36 @@ pub struct AnnouncementDoc {
     pub created_at: i64,
 }
 
+/// One registered FCM device token. Doc id is the token itself, so re-registering
+/// the same device is an idempotent upsert.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PushTokenDoc {
+    pub token: String,
+    pub user_id: String,
+    pub created_at: i64,
+}
+
+/// Per-user channel subscriptions. Doc id is the user id. Absence means defaults
+/// (all channels on).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NotifPrefsDoc {
+    pub user_id: String,
+    pub announcements: bool,
+    pub general: bool,
+    pub movie_night: bool,
+}
+
+/// A persisted notification record powering the inbox feed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NotificationDoc {
+    pub id: String,
+    pub channel: String,
+    pub title: String,
+    pub body: String,
+    pub url: Option<String>,
+    pub created_at: i64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProfileDoc {
     pub user_id: String,

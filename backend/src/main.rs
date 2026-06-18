@@ -29,11 +29,22 @@ async fn main() {
             backend::app_check::AppCheck::new(pn)
         });
 
+    // FCM push: on by default in production (FCM_ENABLE=true), where the GCP
+    // metadata server can mint OAuth tokens for the runtime service account.
+    // Off in local dev — sends become no-ops.
+    let fcm = std::env::var("FCM_ENABLE")
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false)
+        .then(|| {
+            tracing::info!("FCM push enabled for project {gcp_project}");
+            backend::fcm::Fcm::new(&gcp_project)
+        });
+
     let db = FirestoreDb::new(&gcp_project)
         .await
         .expect("failed to connect to Firestore");
 
-    let state = AppState { db, jwt_secret, superadmin_invite_code, app_check };
+    let state = AppState { db, jwt_secret, superadmin_invite_code, app_check, fcm };
     let app = build_app(state, allowed_origins.as_deref(), RateLimit::default());
 
     let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());

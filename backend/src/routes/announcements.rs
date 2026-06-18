@@ -84,6 +84,18 @@ async fn create_announcement(
         .await
         .context("failed to create announcement")?;
 
+    // Notify the announcements channel (persist + best-effort push). Never let a
+    // notification hiccup fail the post itself.
+    if let Err(e) = crate::routes::notifications::dispatch(
+        &state,
+        shared::CHANNEL_ANNOUNCEMENTS,
+        &doc.title,
+        &doc.body,
+        Some("/"),
+    ).await {
+        tracing::warn!("announcement notification failed: {e:#}");
+    }
+
     Ok(Json(doc_to_announcement(doc)))
 }
 

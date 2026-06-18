@@ -1,7 +1,8 @@
 use shared::{
-    Announcement, AuthResponse, CreateAnnouncementRequest, CreateEventRequest, CreateInviteRequest,
-    Event, InviteCode, LoginRequest, Profile, RegisterRequest, UpdateAnnouncementRequest,
-    UpdateEventRequest, UpdateProfileRequest, UpdateUserRequest, UserSummary,
+    Announcement, AuthResponse, BroadcastRequest, CreateAnnouncementRequest, CreateEventRequest,
+    CreateInviteRequest, Event, InviteCode, LoginRequest, Notification, NotificationPrefs, Profile,
+    RegisterPushTokenRequest, RegisterRequest, UpdateAnnouncementRequest, UpdateEventRequest,
+    UpdateNotificationPrefs, UpdateProfileRequest, UpdateUserRequest, UserSummary,
 };
 
 /// API base chosen at runtime from the page's hostname, so the URL can never be
@@ -108,6 +109,64 @@ async fn delete(path: &str, token: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// DELETE carrying a JSON body (used to unregister a specific push token).
+async fn delete_json<B: serde::Serialize>(path: &str, body: &B, token: &str) -> Result<(), String> {
+    let req = gloo_net::http::Request::delete(&format!("{}{path}", api_base()))
+        .header("Content-Type", "application/json")
+        .header("Authorization", &format!("Bearer {token}"));
+    let resp = attach_app_check(req)
+        .await
+        .json(body)
+        .map_err(|e| e.to_string())?
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.ok() {
+        return Err("delete failed".into());
+    }
+    Ok(())
+}
+
+/// PUT with no response body to deserialize (returns unit on success).
+async fn put_unit<B: serde::Serialize>(path: &str, body: &B, token: &str) -> Result<(), String> {
+    let req = gloo_net::http::Request::put(&format!("{}{path}", api_base()))
+        .header("Content-Type", "application/json")
+        .header("Authorization", &format!("Bearer {token}"));
+    let resp = attach_app_check(req)
+        .await
+        .json(body)
+        .map_err(|e| e.to_string())?
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.ok() {
+        let err: shared::ErrorResponse = resp.json().await
+            .unwrap_or(shared::ErrorResponse { error: "unknown error".into() });
+        return Err(err.error);
+    }
+    Ok(())
+}
+
+/// POST with no response body to deserialize.
+async fn post_unit<B: serde::Serialize>(path: &str, body: &B, token: &str) -> Result<(), String> {
+    let req = gloo_net::http::Request::post(&format!("{}{path}", api_base()))
+        .header("Content-Type", "application/json")
+        .header("Authorization", &format!("Bearer {token}"));
+    let resp = attach_app_check(req)
+        .await
+        .json(body)
+        .map_err(|e| e.to_string())?
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.ok() {
+        let err: shared::ErrorResponse = resp.json().await
+            .unwrap_or(shared::ErrorResponse { error: "unknown error".into() });
+        return Err(err.error);
+    }
+    Ok(())
+}
+
 pub async fn login(req: LoginRequest) -> Result<AuthResponse, String> {
     post_json("/auth/login", &req, None).await
 }
@@ -174,6 +233,32 @@ pub async fn update_event(id: &str, req: UpdateEventRequest, token: &str) -> Res
 
 pub async fn delete_event(id: &str, token: &str) -> Result<(), String> {
     delete(&format!("/events/{id}"), token).await
+}
+
+// ---- Notifications ----
+
+pub async fn fetch_notifications(token: &str) -> Result<Vec<Notification>, String> {
+    get("/notifications", token).await
+}
+
+pub async fn fetch_notif_prefs(token: &str) -> Result<NotificationPrefs, String> {
+    get("/notifications/prefs", token).await
+}
+
+pub async fn update_notif_prefs(req: UpdateNotificationPrefs, token: &str) -> Result<NotificationPrefs, String> {
+    put_json("/notifications/prefs", &req, token).await
+}
+
+pub async fn register_push_token(device_token: &str, token: &str) -> Result<(), String> {
+    put_unit("/notifications/token", &RegisterPushTokenRequest { token: device_token.to_string() }, token).await
+}
+
+pub async fn unregister_push_token(device_token: &str, token: &str) -> Result<(), String> {
+    delete_json("/notifications/token", &RegisterPushTokenRequest { token: device_token.to_string() }, token).await
+}
+
+pub async fn broadcast(req: BroadcastRequest, token: &str) -> Result<(), String> {
+    post_unit("/notifications/broadcast", &req, token).await
 }
 
 pub async fn fetch_users(token: &str) -> Result<Vec<UserSummary>, String> {

@@ -190,6 +190,60 @@ pub struct UpdateUserRequest {
     pub disabled: Option<bool>,
 }
 
+// Notifications
+//
+// Channels a notification can belong to. Members opt in/out per channel; pushes
+// and the inbox both respect these.
+pub const CHANNEL_ANNOUNCEMENTS: &str = "announcements";
+pub const CHANNEL_GENERAL: &str = "general";
+pub const CHANNEL_MOVIE_NIGHT: &str = "movie_night";
+
+/// A delivered notification, as shown in the inbox.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Notification {
+    pub id: String,
+    pub channel: String,
+    pub title: String,
+    pub body: String,
+    #[serde(default)]
+    pub url: Option<String>,
+    pub created_at: i64,
+}
+
+/// Per-user channel subscriptions. Default is all-on.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct NotificationPrefs {
+    pub announcements: bool,
+    pub general: bool,
+    pub movie_night: bool,
+}
+
+impl Default for NotificationPrefs {
+    fn default() -> Self {
+        NotificationPrefs { announcements: true, general: true, movie_night: true }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UpdateNotificationPrefs {
+    pub announcements: Option<bool>,
+    pub general: Option<bool>,
+    pub movie_night: Option<bool>,
+}
+
+/// Register (or refresh) an FCM device token for the current user.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RegisterPushTokenRequest {
+    pub token: String,
+}
+
+/// Admin broadcast to the General channel.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BroadcastRequest {
+    pub title: String,
+    pub body: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorResponse {
     pub error: String,

@@ -1,9 +1,10 @@
 use auth_client::{AuthUser, load_auth};
 use crate::{
-    components::nav::Nav,
+    components::{nav::Nav, notify_onboard::NotifyOnboard},
     pages::{
         about::AboutPage,
         admin_announcements::AdminAnnouncementsPage,
+        admin_broadcast::AdminBroadcastPage,
         admin_events::AdminEventsPage,
         admin_invites::AdminInvitesPage,
         admin_users::AdminUsersPage,
@@ -11,6 +12,7 @@ use crate::{
         login::LoginPage,
         members::{MembersPage, MemberProfilePage},
         movie_nights::MovieNightsPage,
+        notifications::NotificationsPage,
         profile::ProfilePage,
         vote::VotePage,
     },
@@ -56,6 +58,7 @@ pub fn App() -> impl IntoView {
             <Router>
                 <AuthGuard auth=auth />
                 <Nav auth=auth />
+                <NotifyOnboard auth=auth />
                 <Routes fallback=|| view! { <main><p>"Page not found."</p></main> }>
                     <Route path=path!("/") view=move || view! { <AnnouncementsPage auth=auth /> } />
                     <Route path=path!("/about") view=|| view! { <AboutPage /> } />
@@ -64,8 +67,10 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/vote") view=move || view! { <VotePage auth=auth /> } />
                     <Route path=path!("/members") view=move || view! { <MembersPage auth=auth /> } />
                     <Route path=path!("/members/:id") view=move || view! { <MemberProfilePage auth=auth /> } />
+                    <Route path=path!("/notifications") view=move || view! { <NotificationsPage auth=auth /> } />
                     <Route path=path!("/profile") view=move || view! { <ProfilePage auth=auth /> } />
                     <Route path=path!("/admin/announcements") view=move || view! { <AdminAnnouncementsPage auth=auth /> } />
+                    <Route path=path!("/admin/broadcast") view=move || view! { <AdminBroadcastPage auth=auth /> } />
                     <Route path=path!("/admin/events") view=move || view! { <AdminEventsPage auth=auth /> } />
                     <Route path=path!("/admin/invites") view=move || view! { <AdminInvitesPage auth=auth /> } />
                     <Route path=path!("/admin/users") view=move || view! { <AdminUsersPage auth=auth /> } />

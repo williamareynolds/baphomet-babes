@@ -17,6 +17,15 @@ pub fn Nav(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let (open, set_open) = signal(false);
 
     let logout = move |_| {
+        // Detach this device's push token so a shared device stops delivering
+        // the logged-out user's notifications.
+        if let (Some(user), Some(device)) = (auth.get(), crate::push::load()) {
+            let token = user.token.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                let _ = crate::api::unregister_push_token(&device, &token).await;
+            });
+        }
+        crate::push::clear();
         clear_auth();
         auth.set(None);
         set_open.set(false);
@@ -47,6 +56,7 @@ pub fn Nav(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                     <A href="/about">"About"</A>
                     <A href="/movie-nights">"Movie Nights"</A>
                     <A href="/members">"Members"</A>
+                    <A href="/notifications">"Notifications"</A>
                     <A href="/profile">"My Profile"</A>
                     <Show when=move || auth.get().map(|u| u.is_admin()).unwrap_or(false)>
                         <A href="/admin/events">"Admin"</A>

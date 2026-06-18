@@ -87,6 +87,21 @@ async fn create_event(
         .await
         .context("failed to create event")?;
 
+    // Notify the movie-night channel (persist + best-effort push).
+    let body = match &doc.description {
+        Some(d) if !d.is_empty() => format!("{} — {}", doc.date, d),
+        _ => doc.date.clone(),
+    };
+    if let Err(e) = crate::routes::notifications::dispatch(
+        &state,
+        shared::CHANNEL_MOVIE_NIGHT,
+        &format!("New movie night: {}", doc.title),
+        &body,
+        Some("/movie-nights"),
+    ).await {
+        tracing::warn!("event notification failed: {e:#}");
+    }
+
     Ok(Json(doc_to_event(doc)))
 }
 
