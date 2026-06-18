@@ -151,4 +151,9 @@ test("movie nights features the next screening and dates it nicely", async ({
   await expect(hero.locator(".kicker")).toHaveText("Next Feature");
   await expect(hero.locator(".feature-title")).toHaveText("The Crow (1994)");
   await expect(hero.locator(".feature-date")).toHaveText("October 31, 2030");
+
+  // The featured screening also appears in the full archive list below.
+  await expect(
+    page.locator(".mn-row").filter({ hasText: "The Crow (1994)" }),
+  ).toBeVisible();
 });

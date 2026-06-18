@@ -28,17 +28,14 @@ fn pretty_date(d: &str) -> String {
     }
 }
 
-/// Split the full event list into the featured "next" screening (soonest event
-/// dated today or later) and everything else in reverse-chronological order.
+/// Pick the featured "next" screening (soonest event dated today or later) and
+/// return the full screening list in reverse-chronological order. The featured
+/// event is highlighted at the top of the page but still appears in the list.
 fn split_events(mut list: Vec<shared::Event>, today: &str) -> (Option<shared::Event>, Vec<shared::Event>) {
     list.sort_by(|a, b| a.date.cmp(&b.date));
     let featured = list.iter().find(|e| e.date.as_str() >= today).cloned();
-    let mut rest: Vec<shared::Event> = match &featured {
-        Some(f) => list.into_iter().filter(|e| e.id != f.id).collect(),
-        None => list,
-    };
-    rest.sort_by(|a, b| b.date.cmp(&a.date));
-    (featured, rest)
+    list.sort_by(|a, b| b.date.cmp(&a.date));
+    (featured, list)
 }
 
 #[component]
@@ -147,7 +144,7 @@ pub fn MovieNightsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                         // ---- Archive (reverse-chron, paginated) ----
                         <h2 class="section-heading mn-archive-heading">"All Screenings"</h2>
                         {if slice.is_empty() {
-                            view! { <p class="mn-empty">"No other screenings yet."</p> }.into_any()
+                            view! { <p class="mn-empty">"No screenings yet."</p> }.into_any()
                         } else {
                             view! {
                                 <div>
