@@ -11,6 +11,7 @@ pub fn AdminNav(active: &'static str, #[prop(default = false)] is_superadmin: bo
     };
     view! {
         <div class="admin-tabs">
+            <A href="/admin/announcements" attr:class=cls("announcements")>"Announcements"</A>
             <A href="/admin/events" attr:class=cls("events")>"Events"</A>
             <A href="/admin/invites" attr:class=cls("invites")>"Invites"</A>
             <Show when=move || is_superadmin>

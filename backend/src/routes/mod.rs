@@ -1,3 +1,4 @@
+pub mod announcements;
 pub mod auth;
 pub mod events;
 pub mod invites;

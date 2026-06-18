@@ -95,6 +95,30 @@ pub struct UpdateEventRequest {
     pub poster_url: Option<String>,
 }
 
+// Announcements
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Announcement {
+    pub id: String,
+    pub title: String,
+    pub body: String,
+    pub poll_embed_url: Option<String>,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateAnnouncementRequest {
+    pub title: String,
+    pub body: String,
+    pub poll_embed_url: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UpdateAnnouncementRequest {
+    pub title: Option<String>,
+    pub body: Option<String>,
+    pub poll_embed_url: Option<String>,
+}
+
 // Profiles
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProfileLink {

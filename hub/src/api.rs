@@ -1,7 +1,7 @@
 use shared::{
-    AuthResponse, CreateEventRequest, CreateInviteRequest, Event, InviteCode, LoginRequest,
-    Profile, RegisterRequest, UpdateEventRequest, UpdateProfileRequest, UpdateUserRequest,
-    UserSummary,
+    Announcement, AuthResponse, CreateAnnouncementRequest, CreateEventRequest, CreateInviteRequest,
+    Event, InviteCode, LoginRequest, Profile, RegisterRequest, UpdateAnnouncementRequest,
+    UpdateEventRequest, UpdateProfileRequest, UpdateUserRequest, UserSummary,
 };
 
 /// API base chosen at runtime from the page's hostname, so the URL can never be
@@ -142,6 +142,22 @@ pub async fn create_invite(req: CreateInviteRequest, token: &str) -> Result<Invi
 
 pub async fn delete_invite(id: &str, token: &str) -> Result<(), String> {
     delete(&format!("/invites/{id}"), token).await
+}
+
+pub async fn fetch_announcements(token: &str) -> Result<Vec<Announcement>, String> {
+    get("/announcements", token).await
+}
+
+pub async fn create_announcement(req: CreateAnnouncementRequest, token: &str) -> Result<Announcement, String> {
+    post_json("/announcements", &req, Some(token)).await
+}
+
+pub async fn update_announcement(id: &str, req: UpdateAnnouncementRequest, token: &str) -> Result<Announcement, String> {
+    put_json(&format!("/announcements/{id}"), &req, token).await
+}
+
+pub async fn delete_announcement(id: &str, token: &str) -> Result<(), String> {
+    delete(&format!("/announcements/{id}"), token).await
 }
 
 pub async fn fetch_events(token: &str) -> Result<Vec<Event>, String> {

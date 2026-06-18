@@ -38,6 +38,16 @@ pub struct EventDoc {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AnnouncementDoc {
+    pub id: String,
+    pub title: String,
+    pub body: String,
+    pub poll_embed_url: Option<String>,
+    pub created_by: String,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProfileDoc {
     pub user_id: String,
     pub username: String,

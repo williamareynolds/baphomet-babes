@@ -263,6 +263,58 @@ async fn events_crud_and_permissions() {
 }
 
 #[tokio::test]
+async fn announcements_crud_and_permissions() {
+    if !emulator_available() { return; }
+    let app = test_app("announcements").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, _) = invite_and_register(&app, &root, "m@test.com", "member1", "member").await;
+
+    // Member cannot post announcements.
+    let post = json!({ "title": "Welcome", "body": "Hello babes", "poll_embed_url": null });
+    let (status, _) = send(&app, req("POST", "/announcements", Some(&member), Some(post.clone()))).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Admin (superadmin) posts; member lists.
+    let (status, created) = send(&app, req("POST", "/announcements", Some(&root), Some(post))).await;
+    assert_eq!(status, StatusCode::OK);
+    let id = created["id"].as_str().unwrap().to_string();
+    assert_eq!(created["title"], "Welcome");
+
+    let (status, list) = send(&app, req("GET", "/announcements", Some(&member), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(list.as_array().unwrap().len(), 1);
+
+    // Anonymous cannot list.
+    let (status, _) = send(&app, req("GET", "/announcements", None, None)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    // Empty title rejected.
+    let (status, body) = send(&app, req("POST", "/announcements", Some(&root), Some(json!({
+        "title": "   ", "body": "x", "poll_embed_url": null
+    })))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap().contains("title"));
+
+    // Update then delete.
+    let (status, updated) = send(&app, req("PUT", &format!("/announcements/{id}"), Some(&root), Some(json!({
+        "body": "Hello again", "poll_embed_url": "https://rcv123.org/poll/abc"
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(updated["body"], "Hello again");
+    assert_eq!(updated["poll_embed_url"], "https://rcv123.org/poll/abc");
+
+    let (status, _) = send(&app, req("DELETE", &format!("/announcements/{id}"), Some(&root), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, list) = send(&app, req("GET", "/announcements", Some(&member), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(list.as_array().unwrap().is_empty());
+
+    // Unknown id → 404.
+    let (status, _) = send(&app, req("PUT", "/announcements/nope", Some(&root), Some(json!({ "title": "x" })))).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn profile_lifecycle_and_visibility() {
     if !emulator_available() { return; }
     let app = test_app("profiles").await;

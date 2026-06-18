@@ -96,6 +96,7 @@ pub fn build_app(state: AppState, allowed_origins: Option<&str>, rate_limit: Rat
     Router::new()
         .route("/health", get(|| async { "ok" }))
         .nest("/auth", routes::auth::router().layer(governor_layer))
+        .nest("/announcements", routes::announcements::router())
         .nest("/events", routes::events::router())
         .nest("/invites", routes::invites::router())
         .nest("/profile", routes::profile::profile_router())
