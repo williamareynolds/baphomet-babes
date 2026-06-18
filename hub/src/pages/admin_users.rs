@@ -61,23 +61,21 @@ pub fn AdminUsersPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                             {list.into_iter().map(|u| {
                                 let is_self = u.id == my_id();
                                 let disabled = u.disabled;
+                                // `default_value` is required: without it Thaw's Select clobbers the
+                                // bound signal to its first <option> on mount. The current role here
+                                // both seeds the signal and selects the right <option> on screen.
+                                let original_role = u.role.clone();
 
-                                // Role selector — changing it pushes an update.
+                                // Role selector. We write only on an explicit Save click (never on
+                                // mount or on change), so simply viewing the page can't alter anyone.
+                                // The PUT is idempotent, so re-saving an unchanged role is harmless.
                                 let role_sig = RwSignal::new(u.role.clone());
-                                let role_id = u.id.clone();
-                                let apply_role = apply;
-                                Effect::new(move |prev: Option<String>| {
-                                    let next = role_sig.get();
-                                    // Skip the initial run so we only react to edits.
-                                    if let Some(p) = prev {
-                                        if p != next {
-                                            apply_role(role_id.clone(), UpdateUserRequest {
-                                                role: Some(next.clone()),
-                                                disabled: None,
-                                            });
-                                        }
-                                    }
-                                    next
+
+                                let save_id = u.id.clone();
+                                let apply_save = apply;
+                                let on_save = move |_| apply_save(save_id.clone(), UpdateUserRequest {
+                                    role: Some(role_sig.get()),
+                                    disabled: None,
                                 });
 
                                 let toggle_id = u.id.clone();
@@ -111,12 +109,18 @@ pub fn AdminUsersPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                                 } else {
                                                     view! {
                                                         <Field label="Role">
-                                                            <Select value=role_sig>
+                                                            <Select value=role_sig default_value=original_role.clone()>
                                                                 <option value="member">"Member"</option>
                                                                 <option value="admin">"Admin"</option>
                                                                 <option value="superadmin">"Superadmin"</option>
                                                             </Select>
                                                         </Field>
+                                                        <Button
+                                                            appearance=ButtonAppearance::Primary
+                                                            on_click=on_save
+                                                        >
+                                                            "Save"
+                                                        </Button>
                                                         <Button
                                                             appearance=ButtonAppearance::Secondary
                                                             on_click=on_toggle
