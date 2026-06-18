@@ -172,8 +172,8 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                         {move || links.get().into_iter().enumerate().map(|(i, (label_sig, url_sig))| {
                             view! {
                                 <div style="display:flex;gap:0.5rem;margin-bottom:0.4rem;align-items:center;">
-                                    <div style="flex:1;"><Input value=label_sig placeholder="Label" /></div>
-                                    <div style="flex:2;"><Input value=url_sig placeholder="https://…" /></div>
+                                    <div style="flex:1;min-width:0;"><Input value=label_sig placeholder="Label" /></div>
+                                    <div style="flex:2;min-width:0;"><Input value=url_sig placeholder="https://…" /></div>
                                     <Button
                                         appearance=ButtonAppearance::Secondary
                                         on_click=move |_| links.update(|ls| { if i < ls.len() { ls.remove(i); } })

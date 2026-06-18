@@ -24,6 +24,10 @@
         background: #0c0a0e;
         color: #f3ebe3;
         min-height: 100vh;
+        /* Safety net against stray horizontal overflow on phones. `clip` (not
+           `hidden`) doesn't create a scroll container, so position:sticky on the
+           nav keeps working. */
+        overflow-x: clip;
       }
 
       body::after {
