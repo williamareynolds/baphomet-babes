@@ -310,6 +310,91 @@
       .admin-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem; }
       .poll-set { color: #93d8b4; font-size: 0.8rem; display: block; margin-top: 0.25rem; }
 
+      /* ---- Movie Nights: next-feature marquee ---- */
+      .kicker {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.62rem;
+        letter-spacing: 0.3em;
+        text-transform: uppercase;
+        color: #ee4b61;
+        margin-bottom: 0.75rem;
+      }
+      .next-feature {
+        display: flex;
+        gap: 2rem;
+        flex-wrap: wrap;
+        padding: 1.75rem;
+        margin-bottom: 3rem;
+        border: 1px solid rgba(196, 30, 58, 0.28);
+        border-radius: 6px;
+        /* Red ember glow bleeding from the top-left corner over near-black. */
+        background:
+          radial-gradient(130% 150% at 0% 0%, rgba(196, 30, 58, 0.12), transparent 58%),
+          #120d15;
+        box-shadow: 0 10px 48px rgba(0, 0, 0, 0.6),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+      }
+      .next-feature .feature-poster-wrap { flex: 0 0 200px; max-width: 200px; }
+      .next-feature .feature-poster {
+        width: 100%;
+        display: block;
+        border-radius: 4px;
+        box-shadow: 0 8px 28px rgba(0, 0, 0, 0.65);
+      }
+      .next-feature .feature-body { flex: 1 1 320px; min-width: 0; }
+      .next-feature .feature-title {
+        font-size: 3rem;
+        line-height: 0.95;
+        color: #f3ebe3;
+        margin: 0.6rem 0 0.4rem;
+      }
+      .next-feature .feature-date {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.78rem;
+        letter-spacing: 0.12em;
+        color: #bdafb2;
+      }
+      .next-feature .feature-desc { margin-top: 0.9rem; color: #d8cdcf; max-width: 52ch; }
+      .next-feature .feature-cta { margin-top: 1.25rem; }
+
+      /* ---- Movie Nights: archive rows ---- */
+      .mn-archive-heading { color: #ad9ea4; }
+      .mn-row { display: flex; gap: 1.25rem; align-items: flex-start; }
+      .mn-thumb {
+        flex: 0 0 64px;
+        width: 64px;
+        height: 96px;
+        object-fit: cover;
+        border-radius: 3px;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
+      }
+      .mn-body { flex: 1 1 auto; min-width: 0; }
+      .mn-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.5rem; letter-spacing: 0.04em; color: #f3ebe3; text-transform: none; margin: 0.35rem 0 0.15rem; }
+      .mn-date { font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem; letter-spacing: 0.1em; color: #95868f; }
+      .mn-desc { margin-top: 0.5rem; color: #bdafb2; }
+      .mn-empty { color: #95868f; }
+
+      /* ---- Pagination ---- */
+      .pagination {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 1.5rem;
+        margin-top: 2.25rem;
+      }
+      .pagination .page-indicator {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.68rem;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: #ad9ea4;
+      }
+
+      @media (max-width: 560px) {
+        .next-feature .feature-poster-wrap { flex-basis: 140px; }
+        .next-feature .feature-title { font-size: 2.4rem; }
+      }
+
       code { font-family: 'IBM Plex Mono', monospace; }
 
       small { font-family: 'IBM Plex Mono', monospace; font-size: 0.7rem; }

@@ -4,7 +4,6 @@ pub mod admin_events;
 pub mod admin_invites;
 pub mod admin_users;
 pub mod announcements;
-pub mod history;
 pub mod login;
 pub mod members;
 pub mod movie_nights;

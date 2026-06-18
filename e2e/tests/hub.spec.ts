@@ -137,3 +137,18 @@ test("admin can create then edit an event in place", async ({ page }) => {
   ).toBeVisible();
   await expect(page.locator("#edit-title")).toHaveCount(0);
 });
+
+test("movie nights features the next screening and dates it nicely", async ({
+  page,
+}) => {
+  await login(page);
+  await page.goto("/movie-nights");
+
+  // The soonest upcoming event ("The Crow (1994)", 2030-10-31) is the marquee
+  // hero, with the kicker, title, and a humanized date.
+  const hero = page.locator(".next-feature");
+  await expect(hero).toBeVisible();
+  await expect(hero.locator(".kicker")).toHaveText("Next Feature");
+  await expect(hero.locator(".feature-title")).toHaveText("The Crow (1994)");
+  await expect(hero.locator(".feature-date")).toHaveText("October 31, 2030");
+});

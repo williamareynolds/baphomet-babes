@@ -46,7 +46,6 @@ pub fn Nav(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                 <Show when=move || auth.get().is_some()>
                     <A href="/about">"About"</A>
                     <A href="/movie-nights">"Movie Nights"</A>
-                    <A href="/history">"History"</A>
                     <A href="/members">"Members"</A>
                     <A href="/profile">"My Profile"</A>
                     <Show when=move || auth.get().map(|u| u.is_admin()).unwrap_or(false)>
