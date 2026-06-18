@@ -103,9 +103,12 @@ test("published profile appears in the member directory", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("members page requires login", async ({ page }) => {
+test("a protected page redirects to login when logged out", async ({ page }) => {
+  // The site-wide auth guard bounces any session-less visitor to /login,
+  // regardless of which route they request.
   await page.goto("/members");
-  await expect(page.locator(".error")).toHaveText("Login required.");
+  await expect(page).toHaveURL("/login");
+  await expect(page.locator("#login-email")).toBeVisible();
 });
 
 test("admin can create then edit an event in place", async ({ page }) => {
