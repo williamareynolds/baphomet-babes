@@ -288,6 +288,8 @@ async fn fanout(
     let prefs: HashMap<String, NotifPrefsDoc> =
         prefs.into_iter().map(|p| (p.user_id.clone(), p)).collect();
 
+    let total = tokens.len();
+    let (mut sent, mut stale, mut failed, mut skipped) = (0usize, 0usize, 0usize, 0usize);
     for t in tokens {
         // No prefs doc → all channels on by default.
         let enabled = match prefs.get(&t.user_id) {
@@ -295,11 +297,13 @@ async fn fanout(
             None => true,
         };
         if !enabled {
+            skipped += 1;
             continue;
         }
         match fcm.send(&t.token, title, body, url).await {
-            Ok(SendOutcome::Sent) => {}
+            Ok(SendOutcome::Sent) => sent += 1,
             Ok(SendOutcome::Stale) => {
+                stale += 1;
                 let _ = state.db
                     .fluent()
                     .delete()
@@ -308,8 +312,14 @@ async fn fanout(
                     .execute()
                     .await;
             }
-            Err(e) => tracing::warn!("FCM send error: {e:#}"),
+            Err(e) => {
+                failed += 1;
+                tracing::warn!("FCM send error: {e:#}");
+            }
         }
     }
+    tracing::info!(
+        "push fanout channel={channel} tokens={total} sent={sent} stale={stale} failed={failed} skipped={skipped}"
+    );
     Ok(())
 }
