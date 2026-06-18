@@ -242,8 +242,16 @@
         gap: 0.5rem;
         border-bottom: 1px solid #251e2c;
         margin: -0.75rem 0 2rem;
+        /* Tabs overflow the viewport on phones (5 of them); let the strip scroll
+           horizontally instead of forcing the whole page wider. */
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none; /* Firefox: hide the bar; swipe still scrolls */
       }
+      .admin-tabs::-webkit-scrollbar { display: none; } /* WebKit: hide the bar */
       .admin-tabs .admin-tab {
+        flex: 0 0 auto;
+        white-space: nowrap;
         padding: 0.5rem 1.25rem 0.65rem;
         margin-bottom: -1px;
         border-bottom: 2px solid transparent;
