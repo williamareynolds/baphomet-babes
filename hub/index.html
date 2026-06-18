@@ -312,8 +312,11 @@
         text-transform: uppercase;
       }
       .thaw-field { margin-bottom: 0.875rem; }
-      /* Form controls span the form column like before. */
-      .thaw-input, .thaw-select, .thaw-textarea { width: 100%; }
+      /* Form controls span the form column like before. min-width:0 lets them
+         shrink inside flex rows (e.g. the profile links row) instead of forcing
+         overflow — without it inputs keep their intrinsic size and push
+         siblings (the remove button) off-screen. */
+      .thaw-input, .thaw-select, .thaw-textarea { width: 100%; min-width: 0; }
 
       /* ---- Page-specific helpers ---- */
       .section-heading { margin-top: 2rem; }
