@@ -64,6 +64,10 @@ pub struct NotifPrefsDoc {
     pub announcements: bool,
     pub general: bool,
     pub movie_night: bool,
+    /// Per-user inbox watermark: the feed hides notifications created at or
+    /// before this unix-seconds time. "Clear" sets it to now. 0 = never cleared.
+    #[serde(default)]
+    pub cleared_at: i64,
 }
 
 /// A persisted notification record powering the inbox feed.

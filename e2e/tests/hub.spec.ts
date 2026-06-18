@@ -212,3 +212,14 @@ test("an admin broadcast reaches the inbox on the General channel", async ({
   await expect(card).toBeVisible();
   await expect(card.locator(".badge-general")).toHaveText("General");
 });
+
+test("clearing the inbox empties it", async ({ page }) => {
+  await login(page);
+  await page.goto("/notifications");
+  // Prior tests posted announcements/broadcasts, so the feed is non-empty.
+  await expect(page.locator(".thaw-card").first()).toBeVisible();
+
+  await page.getByRole("button", { name: "Clear" }).click();
+  await expect(page.getByText("No notifications yet.")).toBeVisible();
+  await expect(page.locator(".thaw-card")).toHaveCount(0);
+});

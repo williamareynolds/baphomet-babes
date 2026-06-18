@@ -25,11 +25,14 @@ use uuid::Uuid;
 const NOTIFICATIONS: &str = "notifications";
 const PUSH_TOKENS: &str = "push_tokens";
 const NOTIF_PREFS: &str = "notif_prefs";
+/// Most recent notifications retained in the inbox view.
+const FEED_LIMIT: usize = 30;
 
 pub fn router() -> axum::Router<AppState> {
     use axum::routing::{get, post, put};
     axum::Router::new()
         .route("/", get(list_feed))
+        .route("/clear", post(clear_feed))
         .route("/token", put(register_token).delete(unregister_token))
         .route("/prefs", get(get_prefs).put(update_prefs))
         .route("/broadcast", post(broadcast))
@@ -68,7 +71,8 @@ async fn list_feed(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> AppResult<Json<Vec<Notification>>> {
-    require_auth(&state, &headers).await?;
+    let claims = require_auth(&state, &headers).await?;
+    let cleared_at = load_prefs(&state, &claims.sub).await?.cleared_at;
 
     let mut docs: Vec<NotificationDoc> = state.db
         .fluent()
@@ -80,7 +84,36 @@ async fn list_feed(
         .context("failed to list notifications")?;
 
     docs.sort_by(|a, b| b.created_at.cmp(&a.created_at));
-    Ok(Json(docs.into_iter().map(doc_to_notification).collect()))
+    let feed: Vec<Notification> = docs
+        .into_iter()
+        .filter(|d| d.created_at > cleared_at)
+        .take(FEED_LIMIT)
+        .map(doc_to_notification)
+        .collect();
+    Ok(Json(feed))
+}
+
+/// Clear the caller's inbox: advance their watermark to now, hiding everything
+/// up to this moment. Shared notification records are untouched (other members
+/// keep theirs); new notifications after this still appear.
+async fn clear_feed(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<()> {
+    let claims = require_auth(&state, &headers).await?;
+    let existing = load_prefs(&state, &claims.sub).await?;
+    let updated = NotifPrefsDoc { cleared_at: now(), ..existing };
+
+    let _: NotifPrefsDoc = state.db
+        .fluent()
+        .update()
+        .in_col(NOTIF_PREFS)
+        .document_id(&claims.sub)
+        .object(&updated)
+        .execute()
+        .await
+        .context("failed to clear notifications")?;
+    Ok(())
 }
 
 // ---- device tokens ----
@@ -146,6 +179,7 @@ async fn load_prefs(state: &AppState, user_id: &str) -> anyhow::Result<NotifPref
         announcements: true,
         general: true,
         movie_night: true,
+        cleared_at: 0,
     }))
 }
 
@@ -175,6 +209,7 @@ async fn update_prefs(
         announcements: req.announcements.unwrap_or(existing.announcements),
         general: req.general.unwrap_or(existing.general),
         movie_night: req.movie_night.unwrap_or(existing.movie_night),
+        cleared_at: existing.cleared_at,
     };
 
     let _: NotifPrefsDoc = state.db

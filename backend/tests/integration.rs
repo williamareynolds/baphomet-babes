@@ -392,6 +392,27 @@ async fn notifications_feed_prefs_tokens_and_broadcast() {
     // within a second is unspecified.)
     let general = feed.iter().find(|n| n["channel"] == "general").expect("general notification present");
     assert_eq!(general["title"], "Meetup Saturday");
+
+    // Clear is per-user: it empties the member's view but not the root's, and
+    // doesn't touch the shared records.
+    std::thread::sleep(std::time::Duration::from_millis(1100)); // watermark is seconds-granular
+    let (status, _) = send(&app, req("POST", "/notifications/clear", Some(&member), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, feed) = send(&app, req("GET", "/notifications", Some(&member), None)).await;
+    assert!(feed.as_array().unwrap().is_empty(), "member feed cleared");
+    let (_, feed) = send(&app, req("GET", "/notifications", Some(&root), None)).await;
+    assert_eq!(feed.as_array().unwrap().len(), 3, "root feed unaffected by member's clear");
+
+    // New notifications after a clear reappear for the member.
+    std::thread::sleep(std::time::Duration::from_millis(1100));
+    let (status, _) = send(&app, req("POST", "/notifications/broadcast", Some(&root), Some(json!({
+        "title": "After clear", "body": "z"
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, feed) = send(&app, req("GET", "/notifications", Some(&member), None)).await;
+    let feed = feed.as_array().unwrap();
+    assert_eq!(feed.len(), 1);
+    assert_eq!(feed[0]["title"], "After clear");
 }
 
 #[tokio::test]

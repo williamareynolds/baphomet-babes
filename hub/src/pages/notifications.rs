@@ -24,8 +24,10 @@ fn pretty_time(secs: i64) -> String {
 #[component]
 pub fn NotificationsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let items: RwSignal<Option<Result<Vec<shared::Notification>, String>>> = RwSignal::new(None);
+    let (refresh, set_refresh) = signal(0u32);
 
     Effect::new(move |_| {
+        let _ = refresh.get();
         let token = auth.get().map(|u| u.token);
         wasm_bindgen_futures::spawn_local(async move {
             let result = match token {
@@ -36,13 +38,29 @@ pub fn NotificationsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
         });
     });
 
+    let has_items = move || matches!(items.get(), Some(Ok(ref l)) if !l.is_empty());
+
+    let on_clear = move |_| {
+        let Some(user) = auth.get() else { return };
+        wasm_bindgen_futures::spawn_local(async move {
+            if api::clear_notifications(&user.token).await.is_ok() {
+                set_refresh.update(|n| *n += 1);
+            }
+        });
+    };
+
     view! {
         <main>
             <div class="notif-header">
                 <h1>"Notifications"</h1>
-                <A href="/profile">
-                    <Button appearance=ButtonAppearance::Secondary>"Notification Settings"</Button>
-                </A>
+                <div class="notif-actions">
+                    <Show when=has_items>
+                        <Button appearance=ButtonAppearance::Secondary on_click=on_clear>"Clear"</Button>
+                    </Show>
+                    <A href="/profile">
+                        <Button appearance=ButtonAppearance::Secondary>"Notification Settings"</Button>
+                    </A>
+                </div>
             </div>
 
             {move || match items.get() {

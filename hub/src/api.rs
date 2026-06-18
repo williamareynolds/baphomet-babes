@@ -241,6 +241,10 @@ pub async fn fetch_notifications(token: &str) -> Result<Vec<Notification>, Strin
     get("/notifications", token).await
 }
 
+pub async fn clear_notifications(token: &str) -> Result<(), String> {
+    post_unit("/notifications/clear", &(), token).await
+}
+
 pub async fn fetch_notif_prefs(token: &str) -> Result<NotificationPrefs, String> {
     get("/notifications/prefs", token).await
 }
