@@ -64,10 +64,28 @@ pub struct NotifPrefsDoc {
     pub announcements: bool,
     pub general: bool,
     pub movie_night: bool,
+    /// New channel: defaults on for docs written before it existed.
+    #[serde(default = "default_true")]
+    pub chat: bool,
     /// Per-user inbox watermark: the feed hides notifications created at or
     /// before this unix-seconds time. "Clear" sets it to now. 0 = never cleared.
     #[serde(default)]
     pub cleared_at: i64,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// One group-chat message. Doc id is `id`. `author` is denormalized at write
+/// time so the feed needs no profile joins.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatMessageDoc {
+    pub id: String,
+    pub user_id: String,
+    pub author: String,
+    pub body: String,
+    pub created_at: i64,
 }
 
 /// A persisted notification record powering the inbox feed.

@@ -328,6 +328,7 @@ async fn notifications_feed_prefs_tokens_and_broadcast() {
     assert_eq!(prefs["announcements"], true);
     assert_eq!(prefs["general"], true);
     assert_eq!(prefs["movie_night"], true);
+    assert_eq!(prefs["chat"], true);
 
     // Update one channel; others persist.
     let (status, prefs) = send(&app, req("PUT", "/notifications/prefs", Some(&member), Some(json!({ "general": false })))).await;
@@ -413,6 +414,47 @@ async fn notifications_feed_prefs_tokens_and_broadcast() {
     let feed = feed.as_array().unwrap();
     assert_eq!(feed.len(), 1);
     assert_eq!(feed[0]["title"], "After clear");
+}
+
+#[tokio::test]
+async fn group_chat_send_list_and_validation() {
+    if !emulator_available() { return; }
+    let app = test_app("chat").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, _) = invite_and_register(&app, &root, "c@test.com", "chatter", "member").await;
+
+    // Anonymous can't read or post.
+    let (status, _) = send(&app, req("GET", "/chat", None, None)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    // Empty / blank messages are rejected.
+    let (status, body) = send(&app, req("POST", "/chat", Some(&member), Some(json!({ "body": "   " })))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap().contains("message"));
+
+    // Send a message; the author label is the username (no display name set).
+    let (status, msg) = send(&app, req("POST", "/chat", Some(&member), Some(json!({ "body": "  hello group  " })))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(msg["body"], "hello group"); // trimmed
+    assert_eq!(msg["author"], "chatter");
+
+    // A second message from a different member.
+    let (status, _) = send(&app, req("POST", "/chat", Some(&root), Some(json!({ "body": "hi chatter" })))).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // The feed returns both, oldest-first.
+    let (status, feed) = send(&app, req("GET", "/chat", Some(&member), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    let feed = feed.as_array().unwrap();
+    assert_eq!(feed.len(), 2);
+    assert_eq!(feed[0]["body"], "hello group");
+    assert_eq!(feed[1]["body"], "hi chatter");
+
+    // Chat is push-only: it must NOT create inbox records (else it would flood
+    // the capped announcements feed).
+    let (_, notifs) = send(&app, req("GET", "/notifications", Some(&member), None)).await;
+    let chat_notif = notifs.as_array().unwrap().iter().find(|n| n["channel"] == "chat");
+    assert!(chat_notif.is_none(), "chat messages stay out of the inbox feed");
 }
 
 #[tokio::test]

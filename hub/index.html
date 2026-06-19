@@ -239,6 +239,7 @@
       .badge-announcements { background: #c41e3a; color: #fff; }
       .badge-general { background: transparent; border: 1px solid #6e5a3a; color: #e6cda4; }
       .badge-movie_night { background: transparent; border: 1px solid #3a5a6e; color: #a4cfe6; }
+      .badge-chat { background: transparent; border: 1px solid #3a6e54; color: #a4e6c4; }
 
       /* ---- Admin sub-navigation (events / invites tabs) ---- */
       .admin-tabs {
@@ -431,6 +432,76 @@
       .notif-time { font-family: 'IBM Plex Mono', monospace; font-size: 0.62rem; letter-spacing: 0.06em; color: #95868f; }
       .notif-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.5rem; letter-spacing: 0.04em; color: #f3ebe3; text-transform: none; margin: 0.5rem 0 0.2rem; }
       .notif-body { color: #d8cdcf; white-space: pre-wrap; }
+
+      /* ---- Group chat ---- */
+      .chat-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+      .chat-header h1 { margin-bottom: 0; }
+      .chat-tools { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+      /* Scrolling conversation pane sized to the viewport, sitting above the
+         composer. The min() keeps it usable on short phone screens. */
+      .chat-feed {
+        margin: 1.25rem 0 1rem;
+        padding: 0.75rem;
+        height: min(60vh, 540px);
+        overflow-y: auto;
+        background: #140e1a;
+        border: 1px solid #271a30;
+        border-radius: 6px;
+      }
+      .chat-empty {
+        color: #95868f;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.75rem;
+        text-align: center;
+        margin-top: 2rem;
+      }
+      .chat-messages { display: flex; flex-direction: column; gap: 0.85rem; }
+      /* Each message is a column; own messages flip to the right edge. */
+      .chat-msg { display: flex; flex-direction: column; align-items: flex-start; max-width: 78%; }
+      .chat-msg.mine { align-self: flex-end; align-items: flex-end; }
+      .chat-meta {
+        display: flex;
+        gap: 0.5rem;
+        align-items: baseline;
+        margin-bottom: 0.2rem;
+        font-family: 'IBM Plex Mono', monospace;
+      }
+      .chat-author { font-size: 0.66rem; letter-spacing: 0.04em; color: #c8a4e6; }
+      .chat-msg.mine .chat-author { color: #ee4b61; }
+      .chat-time { font-size: 0.58rem; color: #6f626a; }
+      .chat-bubble {
+        background: #211830;
+        color: #ece2e4;
+        padding: 0.5rem 0.75rem;
+        border-radius: 10px;
+        line-height: 1.45;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .chat-msg.mine .chat-bubble { background: #3a1e2a; }
+      .chat-composer { display: flex; gap: 0.5rem; align-items: flex-end; }
+      .chat-input {
+        flex: 1;
+        min-width: 0;
+        resize: vertical;
+        min-height: 2.6rem;
+        max-height: 8rem;
+        padding: 0.6rem 0.75rem;
+        background: #140e1a;
+        color: #ece2e4;
+        border: 1px solid #271a30;
+        border-radius: 6px;
+        font-family: inherit;
+        font-size: 0.95rem;
+        line-height: 1.4;
+      }
+      .chat-input:focus { outline: none; border-color: #6e3a54; }
 
       /* Onboarding nudge — same chrome as the PWA bars, with a calmer tone. */
       .notif-onboard {

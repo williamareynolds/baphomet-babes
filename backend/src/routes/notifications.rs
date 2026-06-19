@@ -61,6 +61,7 @@ fn prefs_for(channel: &str, p: &NotifPrefsDoc) -> bool {
         shared::CHANNEL_ANNOUNCEMENTS => p.announcements,
         shared::CHANNEL_GENERAL => p.general,
         shared::CHANNEL_MOVIE_NIGHT => p.movie_night,
+        shared::CHANNEL_CHAT => p.chat,
         _ => false,
     }
 }
@@ -179,6 +180,7 @@ async fn load_prefs(state: &AppState, user_id: &str) -> anyhow::Result<NotifPref
         announcements: true,
         general: true,
         movie_night: true,
+        chat: true,
         cleared_at: 0,
     }))
 }
@@ -193,6 +195,7 @@ async fn get_prefs(
         announcements: p.announcements,
         general: p.general,
         movie_night: p.movie_night,
+        chat: p.chat,
     }))
 }
 
@@ -209,6 +212,7 @@ async fn update_prefs(
         announcements: req.announcements.unwrap_or(existing.announcements),
         general: req.general.unwrap_or(existing.general),
         movie_night: req.movie_night.unwrap_or(existing.movie_night),
+        chat: req.chat.unwrap_or(existing.chat),
         cleared_at: existing.cleared_at,
     };
 
@@ -226,6 +230,7 @@ async fn update_prefs(
         announcements: updated.announcements,
         general: updated.general,
         movie_night: updated.movie_night,
+        chat: updated.chat,
     }))
 }
 
@@ -240,7 +245,7 @@ async fn broadcast(
     if req.title.trim().is_empty() {
         return Err(AppError::BadRequest("title is required".into()));
     }
-    dispatch(&state, CHANNEL_GENERAL, &req.title, &req.body, Some("/notifications")).await?;
+    dispatch(&state, CHANNEL_GENERAL, &req.title, &req.body, Some("/notifications"), None).await?;
     Ok(())
 }
 
@@ -255,6 +260,7 @@ pub async fn dispatch(
     title: &str,
     body: &str,
     url: Option<&str>,
+    exclude_user: Option<&str>,
 ) -> anyhow::Result<()> {
     let doc = NotificationDoc {
         id: Uuid::new_v4().to_string(),
@@ -280,13 +286,41 @@ pub async fn dispatch(
         let title = title.to_string();
         let body = body.to_string();
         let url = url.map(|s| s.to_string());
+        let exclude_user = exclude_user.map(|s| s.to_string());
         tokio::spawn(async move {
-            if let Err(e) = fanout(&state, &channel, &title, &body, url.as_deref()).await {
+            if let Err(e) = fanout(&state, &channel, &title, &body, url.as_deref(), exclude_user.as_deref()).await {
                 tracing::warn!("push fanout failed: {e:#}");
             }
         });
     }
     Ok(())
+}
+
+/// Push a notification to subscribed devices WITHOUT persisting it to the inbox.
+/// Used for high-volume sources (group chat) that would otherwise flood the
+/// capped feed — the chat page is its own history. Best-effort and backgrounded.
+pub fn push_only(
+    state: &AppState,
+    channel: &str,
+    title: &str,
+    body: &str,
+    url: Option<&str>,
+    exclude_user: Option<&str>,
+) {
+    if state.fcm.is_none() {
+        return;
+    }
+    let state = state.clone();
+    let channel = channel.to_string();
+    let title = title.to_string();
+    let body = body.to_string();
+    let url = url.map(|s| s.to_string());
+    let exclude_user = exclude_user.map(|s| s.to_string());
+    tokio::spawn(async move {
+        if let Err(e) = fanout(&state, &channel, &title, &body, url.as_deref(), exclude_user.as_deref()).await {
+            tracing::warn!("push fanout failed: {e:#}");
+        }
+    });
 }
 
 /// Send `channel`'s notification to every subscribed device, pruning any token
@@ -297,6 +331,7 @@ async fn fanout(
     title: &str,
     body: &str,
     url: Option<&str>,
+    exclude_user: Option<&str>,
 ) -> anyhow::Result<()> {
     let Some(fcm) = &state.fcm else { return Ok(()) };
 
@@ -326,6 +361,11 @@ async fn fanout(
     let total = tokens.len();
     let (mut sent, mut stale, mut failed, mut skipped) = (0usize, 0usize, 0usize, 0usize);
     for t in tokens {
+        // Don't push a message back to its own author's devices.
+        if exclude_user == Some(t.user_id.as_str()) {
+            skipped += 1;
+            continue;
+        }
         // No prefs doc → all channels on by default.
         let enabled = match prefs.get(&t.user_id) {
             Some(p) => prefs_for(channel, p),

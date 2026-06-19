@@ -92,6 +92,7 @@ async fn create_announcement(
         &doc.title,
         &doc.body,
         Some("/"),
+        None,
     ).await {
         tracing::warn!("announcement notification failed: {e:#}");
     }

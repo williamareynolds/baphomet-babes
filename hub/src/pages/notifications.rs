@@ -9,6 +9,7 @@ fn channel_label(c: &str) -> &'static str {
         shared::CHANNEL_ANNOUNCEMENTS => "Announcement",
         shared::CHANNEL_GENERAL => "General",
         shared::CHANNEL_MOVIE_NIGHT => "Movie Night",
+        shared::CHANNEL_CHAT => "Chat",
         _ => "Notice",
     }
 }

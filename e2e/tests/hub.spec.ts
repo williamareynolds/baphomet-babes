@@ -213,6 +213,28 @@ test("an admin broadcast reaches the inbox on the General channel", async ({
   await expect(card.locator(".badge-general")).toHaveText("General");
 });
 
+test("group chat sends and shows a message", async ({ page }) => {
+  await login(page);
+  await page.goto("/chat");
+
+  await expect(page.getByRole("heading", { name: "Group Chat" })).toBeVisible();
+
+  const msg = `Hello from e2e ${Date.now()}`;
+  await page.getByPlaceholder("Message the group…").fill(msg);
+  await page.getByRole("button", { name: "Send" }).click();
+
+  // The sent message renders in the feed, attributed to the author.
+  const bubble = page.locator(".chat-bubble").filter({ hasText: msg });
+  await expect(bubble).toBeVisible();
+  await expect(page.locator(".chat-msg.mine .chat-author").last()).toHaveText(
+    "Root Babe",
+  );
+
+  // Chat is push-only — it must not appear in the notifications inbox.
+  await page.goto("/notifications");
+  await expect(page.locator(".badge-chat")).toHaveCount(0);
+});
+
 test("clearing the inbox empties it", async ({ page }) => {
   await login(page);
   await page.goto("/notifications");

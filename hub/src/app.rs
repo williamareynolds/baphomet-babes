@@ -9,6 +9,7 @@ use crate::{
         admin_invites::AdminInvitesPage,
         admin_users::AdminUsersPage,
         announcements::AnnouncementsPage,
+        chat::ChatPage,
         login::LoginPage,
         members::{MembersPage, MemberProfilePage},
         movie_nights::MovieNightsPage,
@@ -64,6 +65,7 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/about") view=|| view! { <AboutPage /> } />
                     <Route path=path!("/login") view=move || view! { <LoginPage auth=auth /> } />
                     <Route path=path!("/movie-nights") view=move || view! { <MovieNightsPage auth=auth /> } />
+                    <Route path=path!("/chat") view=move || view! { <ChatPage auth=auth /> } />
                     <Route path=path!("/vote") view=move || view! { <VotePage auth=auth /> } />
                     <Route path=path!("/members") view=move || view! { <MembersPage auth=auth /> } />
                     <Route path=path!("/members/:id") view=move || view! { <MemberProfilePage auth=auth /> } />

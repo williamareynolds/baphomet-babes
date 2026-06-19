@@ -98,6 +98,7 @@ async fn create_event(
         &format!("New movie night: {}", doc.title),
         &body,
         Some("/movie-nights"),
+        None,
     ).await {
         tracing::warn!("event notification failed: {e:#}");
     }

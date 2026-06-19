@@ -1,8 +1,9 @@
 use shared::{
-    Announcement, AuthResponse, BroadcastRequest, CreateAnnouncementRequest, CreateEventRequest,
-    CreateInviteRequest, Event, InviteCode, LoginRequest, Notification, NotificationPrefs, Profile,
-    RegisterPushTokenRequest, RegisterRequest, UpdateAnnouncementRequest, UpdateEventRequest,
-    UpdateNotificationPrefs, UpdateProfileRequest, UpdateUserRequest, UserSummary,
+    Announcement, AuthResponse, BroadcastRequest, ChatMessage, CreateAnnouncementRequest,
+    CreateEventRequest, CreateInviteRequest, Event, InviteCode, LoginRequest, Notification,
+    NotificationPrefs, Profile, RegisterPushTokenRequest, RegisterRequest, SendChatRequest,
+    UpdateAnnouncementRequest, UpdateEventRequest, UpdateNotificationPrefs, UpdateProfileRequest,
+    UpdateUserRequest, UserSummary,
 };
 
 /// API base chosen at runtime from the page's hostname, so the URL can never be
@@ -263,6 +264,16 @@ pub async fn unregister_push_token(device_token: &str, token: &str) -> Result<()
 
 pub async fn broadcast(req: BroadcastRequest, token: &str) -> Result<(), String> {
     post_unit("/notifications/broadcast", &req, token).await
+}
+
+// ---- Group chat ----
+
+pub async fn fetch_chat(token: &str) -> Result<Vec<ChatMessage>, String> {
+    get("/chat", token).await
+}
+
+pub async fn send_chat(body: &str, token: &str) -> Result<ChatMessage, String> {
+    post_json("/chat", &SendChatRequest { body: body.to_string() }, Some(token)).await
 }
 
 pub async fn fetch_users(token: &str) -> Result<Vec<UserSummary>, String> {

@@ -49,6 +49,7 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let ch_announce = RwSignal::new(true);
     let ch_general = RwSignal::new(true);
     let ch_movie = RwSignal::new(true);
+    let ch_chat = RwSignal::new(true);
     let notif_msg = RwSignal::new(String::new());
 
     Effect::new(move |_| {
@@ -59,6 +60,7 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                     ch_announce.set(p.announcements);
                     ch_general.set(p.general);
                     ch_movie.set(p.movie_night);
+                    ch_chat.set(p.chat);
                 }
             });
         }
@@ -87,6 +89,7 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
             announcements: Some(ch_announce.get()),
             general: Some(ch_general.get()),
             movie_night: Some(ch_movie.get()),
+            chat: Some(ch_chat.get()),
         };
         wasm_bindgen_futures::spawn_local(async move {
             match api::update_notif_prefs(req, &user.token).await {
@@ -224,6 +227,7 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                         <Switch checked=ch_announce label="Announcements" />
                         <Switch checked=ch_general label="General" />
                         <Switch checked=ch_movie label="Movie Nights" />
+                        <Switch checked=ch_chat label="Group Chat" />
                     </div>
 
                     <Show when=move || !notif_msg.get().is_empty()>

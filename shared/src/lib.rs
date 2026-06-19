@@ -197,6 +197,7 @@ pub struct UpdateUserRequest {
 pub const CHANNEL_ANNOUNCEMENTS: &str = "announcements";
 pub const CHANNEL_GENERAL: &str = "general";
 pub const CHANNEL_MOVIE_NIGHT: &str = "movie_night";
+pub const CHANNEL_CHAT: &str = "chat";
 
 /// A delivered notification, as shown in the inbox.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -216,11 +217,12 @@ pub struct NotificationPrefs {
     pub announcements: bool,
     pub general: bool,
     pub movie_night: bool,
+    pub chat: bool,
 }
 
 impl Default for NotificationPrefs {
     fn default() -> Self {
-        NotificationPrefs { announcements: true, general: true, movie_night: true }
+        NotificationPrefs { announcements: true, general: true, movie_night: true, chat: true }
     }
 }
 
@@ -229,12 +231,32 @@ pub struct UpdateNotificationPrefs {
     pub announcements: Option<bool>,
     pub general: Option<bool>,
     pub movie_night: Option<bool>,
+    pub chat: Option<bool>,
 }
 
 /// Register (or refresh) an FCM device token for the current user.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegisterPushTokenRequest {
     pub token: String,
+}
+
+// Group chat
+//
+// One whole-group room. Messages carry a denormalized author label (display name
+// or username, resolved at post time) so the feed renders without per-message
+// profile lookups.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ChatMessage {
+    pub id: String,
+    pub user_id: String,
+    pub author: String,
+    pub body: String,
+    pub created_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SendChatRequest {
+    pub body: String,
 }
 
 /// Admin broadcast to the General channel.
