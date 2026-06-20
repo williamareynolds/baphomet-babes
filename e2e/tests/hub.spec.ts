@@ -170,8 +170,8 @@ test("profile exposes notification settings", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Notifications" }),
   ).toBeVisible();
-  // is_public switch + three channel switches.
-  await expect(page.getByRole("switch")).toHaveCount(4);
+  // is_public switch + four channel switches (announcements/general/movie/chat).
+  await expect(page.getByRole("switch")).toHaveCount(5);
   await expect(
     page.getByRole("button", { name: "Save Notification Settings" }),
   ).toBeVisible();

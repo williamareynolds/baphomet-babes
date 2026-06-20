@@ -438,7 +438,10 @@ async fn group_chat_send_list_and_validation() {
     assert_eq!(msg["body"], "hello group"); // trimmed
     assert_eq!(msg["author"], "chatter");
 
-    // A second message from a different member.
+    // A second message from a different member. Sleep first so its created_at
+    // lands in a later second — timestamps are seconds-granular, and the feed's
+    // order_by(created_at) is otherwise ambiguous within a single second.
+    std::thread::sleep(std::time::Duration::from_millis(1100));
     let (status, _) = send(&app, req("POST", "/chat", Some(&root), Some(json!({ "body": "hi chatter" })))).await;
     assert_eq!(status, StatusCode::OK);
 
