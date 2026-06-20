@@ -250,6 +250,46 @@ test("group chat sends and shows a message", async ({ page }) => {
   await expect(page.locator(".badge-chat")).toHaveCount(0);
 });
 
+test("voting is open while undated and closes once a date is set", async ({
+  page,
+}) => {
+  await login(page);
+  await page.goto("/admin/events");
+
+  // A main event with a poll but no date — date is still being voted on.
+  await page.getByPlaceholder("Movie title").fill("Undated Pick");
+  await page
+    .getByPlaceholder("https://rcv123.org/poll/...")
+    .first()
+    .fill("https://rcv123.org/poll/test");
+  await page.getByRole("button", { name: "Create Event" }).click();
+  await expect(page.locator(".success")).toHaveText("Event created!");
+
+  // The vote page surfaces the open poll.
+  await page.goto("/vote");
+  await expect(page.getByText("Voting for:")).toBeVisible();
+  await expect(page.getByText("Undated Pick")).toBeVisible();
+
+  // Set a date on it → the poll closes. (Clicking Edit swaps the card body for
+  // the edit form, so target the form by its #edit-title field.)
+  await page.goto("/admin/events");
+  const card = page.locator(".thaw-card").filter({ hasText: "Undated Pick" });
+  await card.getByRole("button", { name: "Edit" }).click();
+  const editForm = page.locator('form:has(#edit-title)');
+  await editForm.locator('input[type="date"]').fill("2031-12-25");
+  await editForm.getByRole("button", { name: "Save" }).click();
+
+  // The card swaps back to a display row showing the saved date.
+  await expect(
+    page.locator(".thaw-card").filter({ hasText: "Undated Pick" }),
+  ).toContainText("2031-12-25");
+
+  await page.goto("/vote");
+  await expect(
+    page.getByText("No active poll right now. Check back soon!"),
+  ).toBeVisible();
+});
+
 test("clearing the inbox empties it", async ({ page }) => {
   await login(page);
   await page.goto("/notifications");

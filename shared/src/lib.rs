@@ -68,7 +68,9 @@ pub struct Event {
     pub id: String,
     pub event_type: String, // "main" | "special"
     pub title: String,
-    pub date: String,
+    /// Optional — an event can exist (and be voted on) before a date is set.
+    #[serde(default)]
+    pub date: Option<String>,
     pub description: Option<String>,
     pub poll_embed_url: Option<String>,
     #[serde(default)]
@@ -79,7 +81,8 @@ pub struct Event {
 pub struct CreateEventRequest {
     pub event_type: String,
     pub title: String,
-    pub date: String,
+    #[serde(default)]
+    pub date: Option<String>,
     pub description: Option<String>,
     pub poll_embed_url: Option<String>,
     pub poster_url: Option<String>,

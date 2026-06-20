@@ -33,7 +33,7 @@ fn event_wire_format() {
         id: "5e1e3b9f-0000-4000-8000-000000000002".into(),
         event_type: "main".into(),
         title: "The Witch".into(),
-        date: "2026-06-13".into(),
+        date: Some("2026-06-13".to_string()),
         description: Some("A24 night".into()),
         poll_embed_url: Some("https://rcv123.org/embed/abc".into()),
         poster_url: Some("https://example.com/poster.jpg".into()),

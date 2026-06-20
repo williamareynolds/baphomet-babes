@@ -29,12 +29,19 @@ fn pretty_date(d: &str) -> String {
     }
 }
 
-/// Pick the featured "next" screening (soonest event dated today or later) and
-/// return the full screening list in reverse-chronological order. The featured
-/// event is highlighted at the top of the page but still appears in the list.
+/// Pick the featured "next" screening and return
+/// the full screening list in reverse-chronological order. The featured event is
+/// the soonest dated screening today-or-later; if none is dated yet, fall back to
+/// a planned (undated) pick — preferring one with an open poll — so an event being
+/// voted on still headlines as "Date TBD".
 fn split_events(mut list: Vec<shared::Event>, today: &str) -> (Option<shared::Event>, Vec<shared::Event>) {
     list.sort_by(|a, b| a.date.cmp(&b.date));
-    let featured = list.iter().find(|e| e.date.as_str() >= today).cloned();
+    let featured = list
+        .iter()
+        .find(|e| e.date.as_deref().is_some_and(|d| d >= today))
+        .or_else(|| list.iter().find(|e| e.date.is_none() && e.poll_embed_url.is_some()))
+        .or_else(|| list.iter().find(|e| e.date.is_none()))
+        .cloned();
     list.sort_by(|a, b| b.date.cmp(&a.date));
     (featured, list)
 }
@@ -111,7 +118,10 @@ pub fn MovieNightsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                             }.into_any(),
                             Some(f) => {
                                 let poster = f.poster_url.clone();
-                                let has_poll = f.poll_embed_url.is_some();
+                                // Voting is to pick a date — once one is set, it's over.
+                                let voting_open = f.poll_embed_url.is_some() && f.date.is_none();
+                                let date_label = f.date.clone().map(|d| pretty_date(&d))
+                                    .unwrap_or_else(|| "Date TBD".to_string());
                                 view! {
                                     <div class="next-feature">
                                         {poster.map(|url| view! {
@@ -122,14 +132,14 @@ pub fn MovieNightsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                         <div class="feature-body">
                                             <p class="kicker">"Next Feature"</p>
                                             <span class={format!("badge badge-{}", f.event_type)}>
-                                                {if f.event_type == "main" { "Main Event" } else { "Special Feature" }}
+                                                {if f.event_type == "main" { "Featured Film" } else { "Special Feature" }}
                                             </span>
                                             <h2 class="feature-title">{f.title}</h2>
-                                            <p class="feature-date">{pretty_date(&f.date)}</p>
+                                            <p class="feature-date">{date_label}</p>
                                             {f.description.map(|d| view! {
                                                 <p class="feature-desc">{d}</p>
                                             })}
-                                            {has_poll.then(|| view! {
+                                            {voting_open.then(|| view! {
                                                 <div class="feature-cta">
                                                     <A href="/vote">
                                                         <Button appearance=ButtonAppearance::Primary>"Vote on Date →"</Button>
@@ -157,10 +167,12 @@ pub fn MovieNightsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                                 })}
                                                 <div class="mn-body">
                                                     <span class={format!("badge badge-{}", e.event_type)}>
-                                                        {if e.event_type == "main" { "Main Event" } else { "Special Feature" }}
+                                                        {if e.event_type == "main" { "Featured Film" } else { "Special Feature" }}
                                                     </span>
                                                     <h3 class="mn-title">{e.title}</h3>
-                                                    <p class="mn-date">{pretty_date(&e.date)}</p>
+                                                    {e.date.as_deref().map(|d| view! {
+                                                        <p class="mn-date">{pretty_date(d)}</p>
+                                                    })}
                                                     {e.description.map(|d| view! {
                                                         <p class="mn-desc">{d}</p>
                                                     })}

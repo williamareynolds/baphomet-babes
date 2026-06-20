@@ -89,7 +89,7 @@ proptest! {
             id,
             event_type,
             title,
-            date,
+            date: Some(date),
             description,
             poll_embed_url: None,
             poster_url,

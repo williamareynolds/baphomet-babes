@@ -45,7 +45,7 @@ pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
         let req = CreateEventRequest {
             event_type: event_type.get(),
             title: title.get(),
-            date: date.get(),
+            date: if date.get().is_empty() { None } else { Some(date.get()) },
             description: if description.get().is_empty() { None } else { Some(description.get()) },
             poll_embed_url: if poll_url.get().is_empty() { None } else { Some(poll_url.get()) },
             poster_url: if poster_url.get().is_empty() { None } else { Some(poster_url.get()) },
@@ -81,7 +81,7 @@ pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
 
     let handle_edit_start = move |e: shared::Event| {
         edit_title.set(e.title.clone());
-        edit_date.set(e.date.clone());
+        edit_date.set(e.date.clone().unwrap_or_default());
         edit_type.set(e.event_type.clone());
         edit_description.set(e.description.clone().unwrap_or_default());
         edit_poll_url.set(e.poll_embed_url.clone().unwrap_or_default());
@@ -128,7 +128,7 @@ pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                     <form on:submit=handle_create>
                         <Field label="Type">
                             <Select value=event_type>
-                                <option value="main">"Main Event"</option>
+                                <option value="main">"Featured Film"</option>
                                 <option value="special">"Special Feature"</option>
                             </Select>
                         </Field>
@@ -180,7 +180,7 @@ pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                                     <form on:submit=handle_edit_submit>
                                                         <Field label="Type">
                                                             <Select value=edit_type>
-                                                                <option value="main">"Main Event"</option>
+                                                                <option value="main">"Featured Film"</option>
                                                                 <option value="special">"Special Feature"</option>
                                                             </Select>
                                                         </Field>
@@ -222,7 +222,7 @@ pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                                                 {e2.event_type.clone()}
                                                             </span>
                                                             <strong style="display:block;margin-top:0.25rem;">{e2.title.clone()}</strong>
-                                                            <small style="color:#bdafb2;">{e2.date.clone()}</small>
+                                                            <small style="color:#bdafb2;">{e2.date.clone().unwrap_or_else(|| "No date set".into())}</small>
                                                             {e2.poll_embed_url.clone().map(|_| view! {
                                                                 <span class="poll-set">"✓ poll set"</span>
                                                             })}

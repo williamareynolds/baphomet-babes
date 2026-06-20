@@ -206,7 +206,8 @@ fn build_ics(events: &[EventDoc]) -> String {
     push("X-PUBLISHED-TTL:PT12H".into());
 
     for e in events {
-        let Some(start) = ics_date(&e.date) else { continue };
+        let Some(date) = &e.date else { continue };
+        let Some(start) = ics_date(date) else { continue };
         let mut summary = e.title.clone();
         if e.event_type == "special" {
             summary = format!("★ {summary}");

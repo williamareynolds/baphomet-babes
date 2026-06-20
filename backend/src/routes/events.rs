@@ -70,7 +70,7 @@ async fn create_event(
         id: id.clone(),
         event_type: req.event_type.clone(),
         title: req.title.clone(),
-        date: req.date.clone(),
+        date: req.date.clone().filter(|d| !d.is_empty()),
         description: req.description.clone(),
         poll_embed_url: req.poll_embed_url.clone(),
         poster_url: req.poster_url.clone(),
@@ -88,9 +88,10 @@ async fn create_event(
         .context("failed to create event")?;
 
     // Notify the movie-night channel (persist + best-effort push).
+    let when = doc.date.clone().unwrap_or_else(|| "Date TBD".to_string());
     let body = match &doc.description {
-        Some(d) if !d.is_empty() => format!("{} — {}", doc.date, d),
-        _ => doc.date.clone(),
+        Some(d) if !d.is_empty() => format!("{} — {}", when, d),
+        _ => when,
     };
     if let Err(e) = crate::routes::notifications::dispatch(
         &state,
@@ -129,7 +130,12 @@ async fn update_event(
         id: existing.id.clone(),
         event_type: req.event_type.unwrap_or(existing.event_type),
         title: req.title.unwrap_or(existing.title),
-        date: req.date.unwrap_or(existing.date),
+        // Some("") clears the date, Some(d) sets it, None leaves it unchanged.
+        date: match req.date {
+            Some(d) if d.is_empty() => None,
+            Some(d) => Some(d),
+            None => existing.date,
+        },
         description: req.description.or(existing.description),
         poll_embed_url: req.poll_embed_url.or(existing.poll_embed_url),
         poster_url: req.poster_url.or(existing.poster_url),

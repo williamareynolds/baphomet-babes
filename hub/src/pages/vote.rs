@@ -14,7 +14,8 @@ pub fn VotePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                 Some(t) => api::fetch_events(&t).await.map(|events| {
                     events
                         .into_iter()
-                        .find(|e| e.event_type == "main" && e.poll_embed_url.is_some())
+                        // Voting picks a date — a dated event's poll is closed.
+                        .find(|e| e.event_type == "main" && e.poll_embed_url.is_some() && e.date.is_none())
                 }),
             };
             poll.set(Some(result));

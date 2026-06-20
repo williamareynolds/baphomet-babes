@@ -264,6 +264,49 @@ async fn events_crud_and_permissions() {
 }
 
 #[tokio::test]
+async fn events_date_is_optional() {
+    if !emulator_available() { return; }
+    let app = test_app("optdate").await;
+    let root = bootstrap_superadmin(&app).await;
+
+    // Create with no date — an event being voted on before a date is picked.
+    let (status, created) = send(&app, req("POST", "/events", Some(&root), Some(json!({
+        "event_type": "main", "title": "TBD Pick"
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(created["date"].is_null());
+    let id = created["id"].as_str().unwrap().to_string();
+
+    // Empty-string date is normalized to null too.
+    let (status, created2) = send(&app, req("POST", "/events", Some(&root), Some(json!({
+        "event_type": "special", "title": "Blank", "date": ""
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(created2["date"].is_null());
+
+    // Setting a date later.
+    let (status, dated) = send(&app, req("PUT", &format!("/events/{id}"), Some(&root), Some(json!({
+        "date": "2031-01-01"
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(dated["date"], "2031-01-01");
+
+    // Updating other fields leaves the date intact (None = no change).
+    let (status, kept) = send(&app, req("PUT", &format!("/events/{id}"), Some(&root), Some(json!({
+        "title": "Now Titled"
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(kept["date"], "2031-01-01");
+
+    // Sending an empty-string date clears it back to null.
+    let (status, cleared) = send(&app, req("PUT", &format!("/events/{id}"), Some(&root), Some(json!({
+        "date": ""
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(cleared["date"].is_null());
+}
+
+#[tokio::test]
 async fn announcements_crud_and_permissions() {
     if !emulator_available() { return; }
     let app = test_app("announcements").await;

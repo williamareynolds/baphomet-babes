@@ -29,7 +29,9 @@ pub struct EventDoc {
     pub id: String,
     pub event_type: String,
     pub title: String,
-    pub date: String,
+    /// Optional — set None until a date is chosen (e.g. while voting).
+    #[serde(default)]
+    pub date: Option<String>,
     pub description: Option<String>,
     pub poll_embed_url: Option<String>,
     #[serde(default)]
