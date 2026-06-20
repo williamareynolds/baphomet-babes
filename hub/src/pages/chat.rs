@@ -29,7 +29,7 @@ pub fn ChatPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     // Notification toggle for the chat channel. `pref_ready` arms the save
     // Effect after the initial load, and `last_saved` suppresses redundant
     // writes (so visiting the page doesn't re-PUT the unchanged value).
-    let notify = RwSignal::new(true);
+    let notify = RwSignal::new(false);
     let pref_ready = RwSignal::new(false);
     let last_saved: RwSignal<Option<bool>> = RwSignal::new(None);
 

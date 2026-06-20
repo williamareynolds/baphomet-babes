@@ -222,7 +222,9 @@ pub struct NotificationPrefs {
 
 impl Default for NotificationPrefs {
     fn default() -> Self {
-        NotificationPrefs { announcements: true, general: true, movie_night: true, chat: true }
+        // Chat is opt-in (off by default) — it's the highest-volume channel, so
+        // members shouldn't get pushed every message until they choose to.
+        NotificationPrefs { announcements: true, general: true, movie_night: true, chat: false }
     }
 }
 

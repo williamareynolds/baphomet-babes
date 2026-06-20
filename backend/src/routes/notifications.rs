@@ -56,6 +56,19 @@ fn doc_to_notification(d: NotificationDoc) -> Notification {
     }
 }
 
+/// Default subscription for a member with no saved prefs, derived from
+/// `NotificationPrefs::default()` (announcements/general/movie on, chat off).
+fn channel_default(channel: &str) -> bool {
+    let d = NotificationPrefs::default();
+    match channel {
+        shared::CHANNEL_ANNOUNCEMENTS => d.announcements,
+        shared::CHANNEL_GENERAL => d.general,
+        shared::CHANNEL_MOVIE_NIGHT => d.movie_night,
+        shared::CHANNEL_CHAT => d.chat,
+        _ => false,
+    }
+}
+
 fn prefs_for(channel: &str, p: &NotifPrefsDoc) -> bool {
     match channel {
         shared::CHANNEL_ANNOUNCEMENTS => p.announcements,
@@ -180,7 +193,7 @@ async fn load_prefs(state: &AppState, user_id: &str) -> anyhow::Result<NotifPref
         announcements: true,
         general: true,
         movie_night: true,
-        chat: true,
+        chat: false,
         cleared_at: 0,
     }))
 }
@@ -366,10 +379,11 @@ async fn fanout(
             skipped += 1;
             continue;
         }
-        // No prefs doc → all channels on by default.
+        // No prefs doc → fall back to the per-channel defaults (chat off, the
+        // rest on), so an unsaved member isn't pushed every chat message.
         let enabled = match prefs.get(&t.user_id) {
             Some(p) => prefs_for(channel, p),
-            None => true,
+            None => channel_default(channel),
         };
         if !enabled {
             skipped += 1;

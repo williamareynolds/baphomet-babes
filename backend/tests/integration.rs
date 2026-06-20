@@ -328,7 +328,7 @@ async fn notifications_feed_prefs_tokens_and_broadcast() {
     assert_eq!(prefs["announcements"], true);
     assert_eq!(prefs["general"], true);
     assert_eq!(prefs["movie_night"], true);
-    assert_eq!(prefs["chat"], true);
+    assert_eq!(prefs["chat"], false); // chat is opt-in (off by default)
 
     // Update one channel; others persist.
     let (status, prefs) = send(&app, req("PUT", "/notifications/prefs", Some(&member), Some(json!({ "general": false })))).await;

@@ -49,7 +49,7 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let ch_announce = RwSignal::new(true);
     let ch_general = RwSignal::new(true);
     let ch_movie = RwSignal::new(true);
-    let ch_chat = RwSignal::new(true);
+    let ch_chat = RwSignal::new(false); // chat is opt-in
     let notif_msg = RwSignal::new(String::new());
 
     Effect::new(move |_| {

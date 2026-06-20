@@ -64,17 +64,14 @@ pub struct NotifPrefsDoc {
     pub announcements: bool,
     pub general: bool,
     pub movie_night: bool,
-    /// New channel: defaults on for docs written before it existed.
-    #[serde(default = "default_true")]
+    /// Opt-in channel: defaults off (serde default for bool), so members written
+    /// before it existed — and new members — are not pushed every chat message.
+    #[serde(default)]
     pub chat: bool,
     /// Per-user inbox watermark: the feed hides notifications created at or
     /// before this unix-seconds time. "Clear" sets it to now. 0 = never cleared.
     #[serde(default)]
     pub cleared_at: i64,
-}
-
-fn default_true() -> bool {
-    true
 }
 
 /// One group-chat message. Doc id is `id`. `author` is denormalized at write
