@@ -5,6 +5,7 @@
 use auth_client::{AuthUser, enable_push, notif_permission};
 use crate::api;
 use leptos::prelude::*;
+use leptos_router::components::A;
 use thaw::{Button, ButtonAppearance, ButtonSize};
 use wasm_bindgen_futures::spawn_local;
 
@@ -61,7 +62,10 @@ pub fn NotifyOnboard(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                     when=can_ask
                     fallback=move || view! {
                         <span>
-                            "Add Baphomet Babes to your Home Screen to turn on notifications."
+                            "Add Baphomet Babes to your Home Screen to turn on notifications. "
+                            <A href="/install" attr:style="color:#bda4e6;text-decoration:underline;">
+                                "How?"
+                            </A>
                         </span>
                     }
                 >

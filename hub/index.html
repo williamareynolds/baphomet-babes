@@ -210,6 +210,9 @@
         letter-spacing: 0.05em;
         color: #ee4b61;
         margin-bottom: 0.75rem;
+        /* Bebas Neue is tall — without this, wrapped headings (e.g. the calendar
+           card on narrow phones) overlap onto the line below. */
+        line-height: 1.1;
       }
 
       h3 {
@@ -548,6 +551,46 @@
         margin: 1rem 0 0.6rem;
         line-height: 1.5;
       }
+
+      /* ---- Install guide ---- */
+      .install-kicker {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.6rem;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: #ee4b61;
+        margin-bottom: 0.5rem;
+      }
+      .install-name { margin: 0 0 0.75rem; font-size: 1.4rem; }
+      .install-steps {
+        margin: 0;
+        padding-left: 1.4rem;
+        color: #d3c6c8;
+      }
+      .install-steps li { margin-bottom: 0.6rem; line-height: 1.6; }
+      .install-note {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.68rem;
+        line-height: 1.65;
+        color: #95868f;
+        margin: 1rem 0 0;
+      }
+      .install-details {
+        border: 1px solid #271a30;
+        border-radius: 8px;
+        background: #140e1a;
+        padding: 0.75rem 1rem;
+        margin-bottom: 0.75rem;
+      }
+      .install-details > summary {
+        cursor: pointer;
+        font-size: 1.05rem;
+        color: #ece2e4;
+        list-style: none;
+      }
+      .install-details > summary::-webkit-details-marker { display: none; }
+      .install-details[open] > summary { margin-bottom: 0.75rem; color: #ee4b61; }
+      .install-details .install-steps { padding-left: 1.4rem; }
 
       /* Onboarding nudge — same chrome as the PWA bars, with a calmer tone. */
       .notif-onboard {

@@ -177,6 +177,28 @@ test("movie nights offers a calendar subscription link", async ({ page }) => {
   await expect(apple).toBeVisible();
   const href = await apple.getAttribute("href");
   expect(href).toMatch(/^webcal:\/\/.*\/calendar\/.+\/baphomet-babes\.ics$/);
+
+  // The subscribe card sits above the full "All Screenings" archive list.
+  const subBox = await page
+    .getByRole("heading", { name: "Subscribe to the calendar" })
+    .boundingBox();
+  const listBox = await page
+    .getByRole("heading", { name: "All Screenings" })
+    .boundingBox();
+  expect(subBox!.y).toBeLessThan(listBox!.y);
+});
+
+test("the install guide is reachable and lists steps", async ({ page }) => {
+  await login(page);
+  await page.getByRole("link", { name: "Install App" }).click();
+  await expect(page).toHaveURL("/install");
+  await expect(
+    page.getByRole("heading", { name: "Install the App" }),
+  ).toBeVisible();
+
+  // The recommended card plus collapsible guides for other devices.
+  await expect(page.getByText("Recommended for your device")).toBeVisible();
+  await expect(page.locator(".install-details").first()).toBeVisible();
 });
 
 test("profile exposes notification settings", async ({ page }) => {

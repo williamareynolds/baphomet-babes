@@ -6,6 +6,7 @@ pub mod admin_invites;
 pub mod admin_users;
 pub mod announcements;
 pub mod chat;
+pub mod install;
 pub mod login;
 pub mod members;
 pub mod movie_nights;

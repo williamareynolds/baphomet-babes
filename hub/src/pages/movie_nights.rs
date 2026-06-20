@@ -152,6 +152,11 @@ pub fn MovieNightsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                             }
                         }}
 
+                        // ---- Subscribe (above the archive list) ----
+                        <div style="margin:2.5rem 0;">
+                            <CalendarSubscribe auth=auth />
+                        </div>
+
                         // ---- Archive (reverse-chron, paginated) ----
                         <h2 class="section-heading mn-archive-heading">"All Screenings"</h2>
                         {if slice.is_empty() {
@@ -219,9 +224,6 @@ pub fn MovieNightsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                 }
             >
                 {archive.clone()}
-                <div style="margin-top:2.5rem;">
-                    <CalendarSubscribe auth=auth />
-                </div>
             </Show>
         </main>
     }

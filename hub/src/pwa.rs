@@ -13,6 +13,16 @@ use wasm_bindgen_futures::spawn_local;
 /// differ, a newer version is live and we prompt to update.
 const BUILD_SHA: &str = env!("BUILD_SHA");
 
+/// True when the app is running as an installed PWA (its own window, no browser
+/// chrome) rather than in a normal browser tab. Used to hide install prompts and
+/// the install-help link once there's nothing left to install.
+pub fn is_standalone() -> bool {
+    web_sys::window()
+        .and_then(|w| w.match_media("(display-mode: standalone)").ok().flatten())
+        .map(|m| m.matches())
+        .unwrap_or(false)
+}
+
 fn online_now() -> bool {
     web_sys::window()
         .map(|w| w.navigator().on_line())
