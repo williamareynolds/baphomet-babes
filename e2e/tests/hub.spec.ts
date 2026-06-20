@@ -164,6 +164,21 @@ test("movie nights features the next screening and dates it nicely", async ({
   ).toBeVisible();
 });
 
+test("movie nights offers a calendar subscription link", async ({ page }) => {
+  await login(page);
+  await page.goto("/movie-nights");
+
+  await expect(
+    page.getByRole("heading", { name: "Subscribe to the calendar" }),
+  ).toBeVisible();
+
+  // The Apple/iCloud button is a webcal:// link to this member's .ics feed.
+  const apple = page.getByRole("link", { name: "Apple / iCloud" });
+  await expect(apple).toBeVisible();
+  const href = await apple.getAttribute("href");
+  expect(href).toMatch(/^webcal:\/\/.*\/calendar\/.+\/baphomet-babes\.ics$/);
+});
+
 test("profile exposes notification settings", async ({ page }) => {
   await login(page);
   await page.goto("/profile");

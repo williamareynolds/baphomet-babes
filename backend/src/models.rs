@@ -74,6 +74,16 @@ pub struct NotifPrefsDoc {
     pub cleared_at: i64,
 }
 
+/// Per-user calendar subscription token. Doc id is the user id, so regenerating
+/// overwrites in place — instantly invalidating the previous token (the feed
+/// looks up by the `token` field).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CalendarTokenDoc {
+    pub user_id: String,
+    pub token: String,
+    pub created_at: i64,
+}
+
 /// One group-chat message. Doc id is `id`. `author` is denormalized at write
 /// time so the feed needs no profile joins.
 #[derive(Debug, Clone, Serialize, Deserialize)]

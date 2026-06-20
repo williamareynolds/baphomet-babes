@@ -268,6 +268,17 @@ pub struct BroadcastRequest {
     pub body: String,
 }
 
+// Calendar subscription
+//
+// Each member gets a secret, revocable token. The ICS feed lives at a public
+// capability URL carrying that token; calendar apps fetch it anonymously, so the
+// token is the only credential. Regenerating rotates it (instantly killing the
+// old link).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CalendarToken {
+    pub token: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorResponse {
     pub error: String,

@@ -1,5 +1,6 @@
 use auth_client::AuthUser;
 use crate::api;
+use crate::components::calendar_subscribe::CalendarSubscribe;
 use leptos::prelude::*;
 use leptos_router::components::A;
 use thaw::{Button, ButtonAppearance, Card};
@@ -206,6 +207,9 @@ pub fn MovieNightsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                 }
             >
                 {archive.clone()}
+                <div style="margin-top:2.5rem;">
+                    <CalendarSubscribe auth=auth />
+                </div>
             </Show>
         </main>
     }

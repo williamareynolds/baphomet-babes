@@ -1,9 +1,9 @@
 use shared::{
-    Announcement, AuthResponse, BroadcastRequest, ChatMessage, CreateAnnouncementRequest,
-    CreateEventRequest, CreateInviteRequest, Event, InviteCode, LoginRequest, Notification,
-    NotificationPrefs, Profile, RegisterPushTokenRequest, RegisterRequest, SendChatRequest,
-    UpdateAnnouncementRequest, UpdateEventRequest, UpdateNotificationPrefs, UpdateProfileRequest,
-    UpdateUserRequest, UserSummary,
+    Announcement, AuthResponse, BroadcastRequest, CalendarToken, ChatMessage,
+    CreateAnnouncementRequest, CreateEventRequest, CreateInviteRequest, Event, InviteCode,
+    LoginRequest, Notification, NotificationPrefs, Profile, RegisterPushTokenRequest,
+    RegisterRequest, SendChatRequest, UpdateAnnouncementRequest, UpdateEventRequest,
+    UpdateNotificationPrefs, UpdateProfileRequest, UpdateUserRequest, UserSummary,
 };
 
 /// API base chosen at runtime from the page's hostname, so the URL can never be
@@ -264,6 +264,21 @@ pub async fn unregister_push_token(device_token: &str, token: &str) -> Result<()
 
 pub async fn broadcast(req: BroadcastRequest, token: &str) -> Result<(), String> {
     post_unit("/notifications/broadcast", &req, token).await
+}
+
+// ---- Calendar subscription ----
+
+pub async fn get_calendar_token(token: &str) -> Result<CalendarToken, String> {
+    get("/calendar/me", token).await
+}
+
+pub async fn regenerate_calendar_token(token: &str) -> Result<CalendarToken, String> {
+    post_json("/calendar/me/regenerate", &(), Some(token)).await
+}
+
+/// Public https URL of the member's .ics feed.
+pub fn calendar_feed_url(feed_token: &str) -> String {
+    format!("{}/calendar/{feed_token}/baphomet-babes.ics", api_base())
 }
 
 // ---- Group chat ----

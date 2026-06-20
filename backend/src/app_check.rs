@@ -136,7 +136,14 @@ pub async fn middleware(
         return next.run(req).await; // enforcement disabled
     };
 
-    if req.method() == Method::OPTIONS || req.uri().path() == "/health" {
+    // The public calendar feed (*.ics) is fetched by Google/iCloud/Outlook with
+    // no App Check token — it's authorized by the secret token in its path — so
+    // it must bypass enforcement. Other /calendar routes stay gated.
+    let path = req.uri().path();
+    if req.method() == Method::OPTIONS
+        || path == "/health"
+        || (path.starts_with("/calendar/") && path.ends_with(".ics"))
+    {
         return next.run(req).await;
     }
 

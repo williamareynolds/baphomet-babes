@@ -503,6 +503,52 @@
       }
       .chat-input:focus { outline: none; border-color: #6e3a54; }
 
+      /* ---- Calendar subscribe ---- */
+      .cal-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.25rem; }
+      .cal-btn {
+        display: inline-block;
+        padding: 0.5rem 0.9rem;
+        border: 1px solid #3a2a44;
+        border-radius: 6px;
+        background: #1a1320;
+        color: #ece2e4;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.72rem;
+        letter-spacing: 0.04em;
+        text-decoration: none;
+        white-space: nowrap;
+      }
+      .cal-btn:hover { border-color: #6e3a54; }
+      .cal-btn-primary { background: #c41e3a; border-color: #c41e3a; color: #fff; }
+      .cal-label {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.6rem;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: #ad9ea4;
+        margin-bottom: 0.4rem;
+      }
+      .cal-url-row { display: flex; gap: 0.5rem; align-items: center; }
+      .cal-url {
+        flex: 1;
+        min-width: 0;
+        overflow-x: auto;
+        white-space: nowrap;
+        padding: 0.5rem 0.7rem;
+        background: #140e1a;
+        border: 1px solid #271a30;
+        border-radius: 6px;
+        font-size: 0.7rem;
+        color: #bda4e6;
+      }
+      .cal-note {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.62rem;
+        color: #95868f;
+        margin: 1rem 0 0.6rem;
+        line-height: 1.5;
+      }
+
       /* Onboarding nudge — same chrome as the PWA bars, with a calmer tone. */
       .notif-onboard {
         background: #1a1320;

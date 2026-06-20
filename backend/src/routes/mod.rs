@@ -1,5 +1,6 @@
 pub mod announcements;
 pub mod auth;
+pub mod calendar;
 pub mod chat;
 pub mod events;
 pub mod invites;

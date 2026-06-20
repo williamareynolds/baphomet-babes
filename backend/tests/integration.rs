@@ -461,6 +461,60 @@ async fn group_chat_send_list_and_validation() {
 }
 
 #[tokio::test]
+async fn calendar_token_and_ics_feed() {
+    if !emulator_available() { return; }
+    let app = test_app("calendar").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, _) = invite_and_register(&app, &root, "cal@test.com", "calfan", "member").await;
+
+    // Anonymous can't mint a token.
+    let (status, _) = send(&app, req("GET", "/calendar/me", None, None)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    // Member mints a token; it's stable across calls.
+    let (status, t1) = send(&app, req("GET", "/calendar/me", Some(&member), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    let token1 = t1["token"].as_str().unwrap().to_string();
+    assert!(!token1.is_empty());
+    let (_, t1b) = send(&app, req("GET", "/calendar/me", Some(&member), None)).await;
+    assert_eq!(t1b["token"].as_str().unwrap(), token1, "token stable across reads");
+
+    // Seed an event so the feed has content.
+    let (status, _) = send(&app, req("POST", "/events", Some(&root), Some(json!({
+        "event_type": "main", "title": "The Crow", "date": "2030-10-31", "description": "Bring snacks"
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Public feed with a valid token: 200, text/calendar, contains the event as
+    // an all-day VEVENT.
+    let feed_path = format!("/calendar/{token1}/baphomet-babes.ics");
+    let resp = app.clone().oneshot(req("GET", &feed_path, None, None)).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(
+        resp.headers().get("content-type").unwrap().to_str().unwrap(),
+        "text/calendar; charset=utf-8",
+    );
+    let body = String::from_utf8(resp.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
+    assert!(body.contains("BEGIN:VCALENDAR"));
+    assert!(body.contains("SUMMARY:The Crow"));
+    assert!(body.contains("DTSTART;VALUE=DATE:20301031"));
+
+    // Unknown token → 404.
+    let (status, _) = send(&app, req("GET", "/calendar/deadbeef/baphomet-babes.ics", None, None)).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // Regenerate rotates the token; the old feed URL stops working.
+    let (status, t2) = send(&app, req("POST", "/calendar/me/regenerate", Some(&member), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    let token2 = t2["token"].as_str().unwrap().to_string();
+    assert_ne!(token2, token1, "regenerate yields a new token");
+    let (status, _) = send(&app, req("GET", &feed_path, None, None)).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "old token revoked");
+    let (status, _) = send(&app, req("GET", &format!("/calendar/{token2}/baphomet-babes.ics"), None, None)).await;
+    assert_eq!(status, StatusCode::OK, "new token works");
+}
+
+#[tokio::test]
 async fn profile_lifecycle_and_visibility() {
     if !emulator_available() { return; }
     let app = test_app("profiles").await;
@@ -655,6 +709,12 @@ async fn app_check_blocks_direct_api_access() {
     })))).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert_eq!(body["error"], "missing app check token");
+
+    // The public .ics calendar feed is exempt (calendar apps send no token). An
+    // unknown token 404s — crucially NOT 401 "missing app check token", which
+    // proves the request passed the App Check gate.
+    let (status, _) = send(&app, req("GET", "/calendar/whatever/baphomet-babes.ics", None, None)).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 
     // Garbage App Check token → rejected at verification.
     let bogus = Request::builder()
