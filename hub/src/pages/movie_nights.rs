@@ -54,9 +54,17 @@ pub fn MovieNightsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     Effect::new(move |_| {
         let token = auth.get().map(|u| u.token);
         wasm_bindgen_futures::spawn_local(async move {
-            let result = match token {
-                Some(t) => api::fetch_events(&t).await,
-                None => return,
+            let Some(t) = token else { return };
+            // Serve the last-seen schedule if the network's down (offline bar
+            // signals staleness); only error when there's nothing stashed.
+            let result = match api::fetch_events(&t).await {
+                Ok(list) => {
+                    crate::cache::stash("events", &list);
+                    Ok(list)
+                }
+                Err(e) => crate::cache::recall::<Vec<shared::Event>>("events")
+                    .map(Ok)
+                    .unwrap_or(Err(e)),
             };
             events.set(Some(result));
         });

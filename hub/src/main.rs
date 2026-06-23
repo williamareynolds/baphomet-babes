@@ -1,5 +1,6 @@
 mod api;
 mod app;
+mod cache;
 mod components;
 mod pages;
 mod push;

@@ -46,6 +46,31 @@ fn reload() {
     }
 }
 
+/// True when an immediate reload would lose nothing — i.e. no text field holds
+/// unsaved input (a chat draft, a half-filled form). Auto-update waits for such a
+/// moment instead of nuking what someone is mid-way through typing.
+fn safe_to_reload() -> bool {
+    let Some(doc) = web_sys::window().and_then(|w| w.document()) else {
+        return true;
+    };
+    let Ok(nodes) = doc.query_selector_all("input, textarea") else {
+        return true;
+    };
+    for i in 0..nodes.length() {
+        let Some(node) = nodes.item(i) else { continue };
+        if let Some(input) = node.dyn_ref::<web_sys::HtmlInputElement>() {
+            if !input.value().is_empty() {
+                return false;
+            }
+        } else if let Some(area) = node.dyn_ref::<web_sys::HtmlTextAreaElement>() {
+            if !area.value().is_empty() {
+                return false;
+            }
+        }
+    }
+    true
+}
+
 /// Renders the offline + update bars. Mount once at the app root.
 #[component]
 pub fn PwaBars() -> impl IntoView {
@@ -62,6 +87,15 @@ pub fn PwaBars() -> impl IntoView {
 
     // ----- update available -----
     let (update_ready, set_update_ready) = signal(false);
+
+    // Apply a known-pending update, but only at a safe moment (nothing typed).
+    // The manual bar below is the force-now escape hatch when this holds off.
+    let try_apply = move || {
+        if update_ready.get_untracked() && safe_to_reload() {
+            reload();
+        }
+    };
+
     let check = move || {
         spawn_local(async move {
             // "dev" builds have no published version.json to compare against.
@@ -71,6 +105,7 @@ pub fn PwaBars() -> impl IntoView {
             if let Some(published) = published_version().await {
                 if published != BUILD_SHA {
                     set_update_ready.set(true);
+                    try_apply();
                 }
             }
         });
@@ -82,6 +117,15 @@ pub fn PwaBars() -> impl IntoView {
         5 * 60 * 1000, // re-check every 5 minutes
     );
     interval_cb.forget();
+
+    // Re-attempt on app foreground — the natural "reopen = fresh" moment for an
+    // installed PWA, and a point where a half-typed draft is usually long gone.
+    if let Some(doc) = win.document() {
+        let vis_cb = Closure::<dyn FnMut()>::new(move || try_apply());
+        let _ = doc
+            .add_event_listener_with_callback("visibilitychange", vis_cb.as_ref().unchecked_ref());
+        vis_cb.forget();
+    }
 
     view! {
         <Show when=move || !online.get()>
