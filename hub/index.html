@@ -4,6 +4,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0c0a0e" />
+    <!-- iOS standalone PWA: make the status-bar behaviour explicit. Without
+         these, iOS picks an inconsistent default and env(safe-area-inset-top)
+         can't be relied on, which let page content bleed into the status-bar
+         strip above the nav. "black-translucent" extends our content full-height
+         under a transparent status bar (white text), and gives a dependable
+         non-zero inset we mask with the band below. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="manifest" href="/public/manifest.json" />
     <link data-trunk rel="copy-dir" href="public"/>
     <!-- Also place the service worker at the site root so its scope is "/". -->
@@ -18,6 +26,10 @@
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
 
+      /* Paint the root the theme colour so the status-bar strip is solid even
+         before anything else renders — a backstop behind the masking band. */
+      html { background: #0c0a0e; }
+
       body {
         font-family: 'Crimson Pro', Georgia, serif;
         font-size: 1.1rem;
@@ -30,21 +42,24 @@
         overflow-x: clip;
       }
 
-      /* iOS standalone: a `position: sticky` nav does NOT reliably paint into
+      /* iOS standalone: a `position: sticky` bar does NOT reliably paint into
          the status-bar safe-area inset, so page content scrolls into view above
-         the bar (the "body above navbar" bug). Cover that strip with a fixed,
-         always-present solid band. Height collapses to 0 where there's no inset
-         (desktop / non-notched), so it's a no-op everywhere else. Sits above the
-         nav (z 100) but only spans the inset, so it never hides nav content. */
+         it (the "body above navbar" bug). Cover that strip with a fixed,
+         always-present solid band, pinned to the true viewport top. Height
+         collapses to 0 where there's no inset (desktop / non-notched), so it's a
+         no-op everywhere else. z-index sits ABOVE every sticky bar — pwa-bar
+         (200) and nav (100) — so nothing, not even a frosted bar's translucent
+         top, can show through the strip; only the decorative noise (1000) is
+         higher. The 0px fallback guards browsers that don't grok env(). */
       body::before {
         content: '';
         position: fixed;
         top: 0;
         left: 0;
         right: 0;
-        height: env(safe-area-inset-top);
+        height: env(safe-area-inset-top, 0px);
         background: #0c0a0e;
-        z-index: 150;
+        z-index: 250;
         pointer-events: none;
       }
 
@@ -637,6 +652,9 @@
         justify-content: center;
         gap: 1rem;
         padding: 0.55rem 1rem;
+        /* When this transient banner is the topmost bar, keep its text clear of
+           the notch strip the band masks above it. */
+        padding-top: max(0.55rem, env(safe-area-inset-top));
         font-family: 'IBM Plex Mono', monospace;
         font-size: 0.72rem;
         letter-spacing: 0.05em;
