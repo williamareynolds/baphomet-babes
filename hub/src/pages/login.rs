@@ -1,7 +1,7 @@
 use auth_client::{AuthUser, save_auth};
 use crate::api;
 use leptos::prelude::*;
-use leptos_router::hooks::use_navigate;
+use leptos_router::hooks::{use_navigate, use_query_map};
 use shared::{AuthResponse, LoginRequest, RegisterRequest};
 use thaw::{Button, ButtonAppearance, ButtonType, Field, Input, InputType};
 
@@ -19,6 +19,15 @@ pub fn LoginPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let reg_username = RwSignal::new(String::new());
     let reg_password = RwSignal::new(String::new());
     let invite_code = RwSignal::new(String::new());
+
+    // Single-use invite links: /login?code=XXX prefills the code and drops the
+    // recipient straight onto the register tab so they never type it by hand.
+    if let Some(code) = use_query_map().get_untracked().get("code") {
+        if !code.is_empty() {
+            invite_code.set(code);
+            set_tab.set("register");
+        }
+    }
 
     let navigate = use_navigate();
     Effect::new(move |_| {

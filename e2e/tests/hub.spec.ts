@@ -217,7 +217,8 @@ test("admin generates a named invite and can copy it", async ({ page }) => {
   const card = page.locator(".thaw-card").filter({ hasText: "Morticia Addams" });
   await expect(card).toBeVisible();
   await expect(card.getByText("555-0666")).toBeVisible();
-  await expect(card.getByRole("button", { name: "Copy" })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Copy link" })).toBeVisible();
+  await expect(card.getByRole("button", { name: "Copy code" })).toBeVisible();
 
   // "Revoke all unused" clears the spare codes (confirm dialog auto-accepted).
   page.on("dialog", (d) => d.accept());
@@ -226,6 +227,50 @@ test("admin generates a named invite and can copy it", async ({ page }) => {
   await expect(
     page.locator(".thaw-card").filter({ hasText: "Morticia Addams" }),
   ).toHaveCount(0);
+});
+
+test("a single-use invite link prefills register and onboards a member", async ({
+  page,
+}) => {
+  // Admin mints a fresh member invite.
+  await login(page); // root is superadmin → admin
+  await page.goto("/admin/invites");
+  await page.getByPlaceholder("First name").fill("Wednesday");
+  await page.getByRole("button", { name: "Generate" }).click();
+  await expect(page.locator(".success")).toContainText("created and copied");
+
+  // Grab the generated code from its listing card.
+  const card = page.locator(".thaw-card").filter({ hasText: "Wednesday" });
+  await expect(card).toBeVisible();
+  const code = ((await card.locator("code").first().textContent()) ?? "").trim();
+  expect(code).not.toEqual("");
+
+  // Simulate the recipient: a session-less visitor opening the share link.
+  await page.evaluate(() => localStorage.clear());
+  await page.goto(`/login?code=${encodeURIComponent(code)}`);
+
+  // The link auto-switches to the register tab with the code prefilled — the
+  // invitee never types it by hand.
+  await expect(page.locator("#reg-invite")).toHaveValue(code);
+
+  // They fill in the rest and land logged-in.
+  const stamp = Date.now();
+  await page.fill("#reg-email", `wednesday-${stamp}@e2e.test`);
+  await page.fill("#reg-username", `wednesday${stamp}`);
+  await page.fill("#reg-password", "member-pw-123");
+  await page.click('form button[type="submit"]');
+
+  await expect(page).toHaveURL("/");
+  await expect(page.getByRole("button", { name: "Logout" })).toBeVisible();
+
+  // The link is single-use: re-registering with the same code is rejected.
+  await page.getByRole("button", { name: "Logout" }).click();
+  await page.goto(`/login?code=${encodeURIComponent(code)}`);
+  await page.fill("#reg-email", `wednesday2-${stamp}@e2e.test`);
+  await page.fill("#reg-username", `wednesday2${stamp}`);
+  await page.fill("#reg-password", "member-pw-123");
+  await page.click('form button[type="submit"]');
+  await expect(page.locator(".error")).toContainText("already used");
 });
 
 test("profile exposes notification settings", async ({ page }) => {

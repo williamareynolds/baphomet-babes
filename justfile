@@ -69,6 +69,16 @@ test-e2e:
     cd e2e
     nvm exec --silent npx playwright test
 
+# Same as test-e2e but with a visible browser, for debugging. Extra args pass
+# through to Playwright, e.g.  just test-e2e-headed -g "single-use invite link"
+test-e2e-headed *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export NVM_DIR="$HOME/.nvm"
+    source /usr/local/opt/nvm/nvm.sh
+    cd e2e
+    nvm exec --silent npx playwright test --headed {{args}}
+
 test-all: test test-integration test-e2e
 
 # Firestore security rules — default-deny (backend SA bypasses; clients blocked).

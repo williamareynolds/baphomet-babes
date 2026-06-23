@@ -12,6 +12,15 @@ fn copy_to_clipboard(text: &str) {
     }
 }
 
+/// Build a single-use registration link for a code: the current origin plus
+/// `/login?code=…`, which the login page reads to prefill the register form.
+fn invite_link(code: &str) -> String {
+    let origin = web_sys::window()
+        .and_then(|w| w.location().origin().ok())
+        .unwrap_or_default();
+    format!("{origin}/login?code={code}")
+}
+
 #[component]
 pub fn AdminInvitesPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let is_admin = move || auth.get().map(|u| u.is_admin()).unwrap_or(false);
@@ -64,9 +73,9 @@ pub fn AdminInvitesPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
         wasm_bindgen_futures::spawn_local(async move {
             match api::create_invite(req, &user.token).await {
                 Ok(code) => {
-                    // Copy the fresh code so it's ready to paste straight into a DM.
-                    copy_to_clipboard(&code.code);
-                    set_invite_success.set(format!("Code {} created and copied.", code.code));
+                    // Copy the single-use link so it's ready to paste straight into a DM.
+                    copy_to_clipboard(&invite_link(&code.code));
+                    set_invite_success.set(format!("Invite link for {} created and copied.", code.code));
                     invite_first.set(String::new());
                     invite_last.set(String::new());
                     invite_phone.set(String::new());
@@ -171,14 +180,16 @@ pub fn AdminInvitesPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                     _ => c.first_name.clone(),
                                 };
                                 let copy_id = id.clone();
-                                let copy_code = code.clone();
-                                let on_copy = move |_| {
-                                    copy_to_clipboard(&copy_code);
+                                let link_code = code.clone();
+                                let on_copy_link = move |_| {
+                                    copy_to_clipboard(&invite_link(&link_code));
                                     copied_id.set(copy_id.clone());
                                 };
+                                let copy_code = code.clone();
+                                let on_copy_code = move |_| { copy_to_clipboard(&copy_code); };
                                 let this_id = id.clone();
                                 let copied_label = move || {
-                                    if copied_id.get() == this_id { "Copied!" } else { "Copy" }
+                                    if copied_id.get() == this_id { "Copied!" } else { "Copy link" }
                                 };
                                 view! {
                                     <Card>
@@ -201,9 +212,13 @@ pub fn AdminInvitesPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                             </div>
                                             <div class="admin-actions">
                                                 <Button
-                                                    appearance=ButtonAppearance::Secondary
-                                                    on_click=on_copy
+                                                    appearance=ButtonAppearance::Primary
+                                                    on_click=on_copy_link
                                                 >{copied_label}</Button>
+                                                <Button
+                                                    appearance=ButtonAppearance::Subtle
+                                                    on_click=on_copy_code
+                                                >"Copy code"</Button>
                                                 {(!used).then(|| view! {
                                                     <Button
                                                         appearance=ButtonAppearance::Secondary
