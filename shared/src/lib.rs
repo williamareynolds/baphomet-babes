@@ -75,6 +75,15 @@ pub struct Event {
     pub poll_embed_url: Option<String>,
     #[serde(default)]
     pub poster_url: Option<String>,
+    /// Optional RSVP cutoff date ("YYYY-MM-DD"). None = RSVPs never close.
+    #[serde(default)]
+    pub rsvp_deadline: Option<String>,
+    /// How many members have RSVP'd "going". Computed per request, not stored.
+    #[serde(default)]
+    pub rsvp_count: i64,
+    /// Whether the requesting member has RSVP'd "going". Computed per request.
+    #[serde(default)]
+    pub my_rsvp: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,6 +95,8 @@ pub struct CreateEventRequest {
     pub description: Option<String>,
     pub poll_embed_url: Option<String>,
     pub poster_url: Option<String>,
+    #[serde(default)]
+    pub rsvp_deadline: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,6 +107,21 @@ pub struct UpdateEventRequest {
     pub description: Option<String>,
     pub poll_embed_url: Option<String>,
     pub poster_url: Option<String>,
+    pub rsvp_deadline: Option<String>,
+}
+
+/// Member's RSVP action for an event: going (true) or cancel (false).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RsvpRequest {
+    pub going: bool,
+}
+
+/// One "going" RSVP, as shown to admins (who can see who's attending).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Rsvp {
+    pub user_id: String,
+    pub author: String,
+    pub created_at: i64,
 }
 
 // Announcements

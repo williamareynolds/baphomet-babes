@@ -42,6 +42,21 @@ pub struct EventDoc {
     pub poll_embed_url: Option<String>,
     #[serde(default)]
     pub poster_url: Option<String>,
+    /// Optional RSVP cutoff date ("YYYY-MM-DD"). None = RSVPs never close.
+    #[serde(default)]
+    pub rsvp_deadline: Option<String>,
+    pub created_at: i64,
+}
+
+/// One member's "going" RSVP to an event. Doc id is `{event_id}_{user_id}` so a
+/// member has at most one per event (idempotent upsert); cancelling deletes it.
+/// `author` is the denormalized display name so the admin list needs no joins.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RsvpDoc {
+    pub id: String,
+    pub event_id: String,
+    pub user_id: String,
+    pub author: String,
     pub created_at: i64,
 }
 

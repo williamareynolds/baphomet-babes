@@ -396,6 +396,66 @@ async fn events_date_is_optional() {
 }
 
 #[tokio::test]
+async fn event_rsvp_flow() {
+    if !emulator_available() { return; }
+    let app = test_app("rsvp").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, _) = invite_and_register(&app, &root, "m@test.com", "member1", "member").await;
+    let (member2, _) = invite_and_register(&app, &root, "m2@test.com", "member2", "member").await;
+
+    // An event with a far-future RSVP deadline.
+    let (status, created) = send(&app, req("POST", "/events", Some(&root), Some(json!({
+        "event_type": "main", "title": "RSVP Movie", "date": "2099-01-01", "rsvp_deadline": "2099-01-01"
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(created["rsvp_deadline"], "2099-01-01");
+    assert_eq!(created["rsvp_count"], 0);
+    let id = created["id"].as_str().unwrap().to_string();
+
+    // Member RSVPs going; count reflects it and my_rsvp is true for that member.
+    let (status, ev) = send(&app, req("POST", &format!("/events/{id}/rsvp"), Some(&member), Some(json!({ "going": true })))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(ev["rsvp_count"], 1);
+    assert_eq!(ev["my_rsvp"], true);
+
+    // Re-RSVPing is idempotent (still 1, not 2).
+    let (_, ev) = send(&app, req("POST", &format!("/events/{id}/rsvp"), Some(&member), Some(json!({ "going": true })))).await;
+    assert_eq!(ev["rsvp_count"], 1);
+
+    // A second member pushes the count to 2.
+    let (_, ev) = send(&app, req("POST", &format!("/events/{id}/rsvp"), Some(&member2), Some(json!({ "going": true })))).await;
+    assert_eq!(ev["rsvp_count"], 2);
+
+    // The list shows the caller's own status; member2 sees my_rsvp true.
+    let (_, list) = send(&app, req("GET", "/events", Some(&member2), None)).await;
+    let row = list.as_array().unwrap().iter().find(|e| e["id"] == id.as_str()).unwrap();
+    assert_eq!(row["rsvp_count"], 2);
+    assert_eq!(row["my_rsvp"], true);
+
+    // Admin can see who's going; a member cannot.
+    let (status, names) = send(&app, req("GET", &format!("/events/{id}/rsvps"), Some(&root), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(names.as_array().unwrap().len(), 2);
+    let (status, _) = send(&app, req("GET", &format!("/events/{id}/rsvps"), Some(&member), None)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Cancelling drops the count and clears my_rsvp.
+    let (_, ev) = send(&app, req("POST", &format!("/events/{id}/rsvp"), Some(&member), Some(json!({ "going": false })))).await;
+    assert_eq!(ev["rsvp_count"], 1);
+    assert_eq!(ev["my_rsvp"], false);
+
+    // A passed deadline rejects new RSVPs.
+    let (status, past) = send(&app, req("POST", "/events", Some(&root), Some(json!({
+        "event_type": "main", "title": "Closed", "date": "2000-01-01", "rsvp_deadline": "2000-01-01"
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+    let past_id = past["id"].as_str().unwrap().to_string();
+    let (status, body) = send(&app, req("POST", &format!("/events/{past_id}/rsvp"), Some(&member), Some(json!({ "going": true })))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap().contains("deadline"));
+}
+
+#[tokio::test]
 async fn announcements_crud_and_permissions() {
     if !emulator_available() { return; }
     let app = test_app("announcements").await;

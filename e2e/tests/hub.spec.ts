@@ -123,7 +123,7 @@ test("admin can create then edit an event in place", async ({ page }) => {
 
   // Create an event.
   await page.getByPlaceholder("Movie title").fill("The Crow");
-  await page.locator('input[type="date"]').fill("2030-10-31");
+  await page.locator('input[type="date"]').first().fill("2030-10-31");
   await page.getByRole("button", { name: "Create Event" }).click();
   await expect(page.locator(".success")).toHaveText("Event created!");
 
@@ -162,6 +162,35 @@ test("movie nights features the next screening and dates it nicely", async ({
   await expect(
     page.locator(".mn-row").filter({ hasText: "The Crow (1994)" }),
   ).toBeVisible();
+});
+
+test("a member can RSVP and admins see who's going", async ({ page }) => {
+  await login(page);
+  await page.goto("/movie-nights");
+
+  // RSVP to the featured screening; the button flips and the count ticks up.
+  const hero = page.locator(".next-feature");
+  await expect(hero.locator(".feature-title")).toHaveText("The Crow (1994)");
+  const rsvpBtn = hero.locator(".rsvp-btn");
+  await expect(rsvpBtn).toContainText("RSVP");
+  await rsvpBtn.click();
+  await expect(rsvpBtn).toContainText("Going");
+  await expect(hero.locator(".rsvp-count")).toHaveText("1 person going");
+
+  // Admins see the count and can expand the attendee names; members can't
+  // (enforced server-side — the names endpoint is admin-only).
+  await page.goto("/admin/events");
+  const card = page.locator(".thaw-card").filter({ hasText: "The Crow (1994)" });
+  await expect(card).toContainText("1 going");
+  await card.getByRole("button", { name: "View RSVPs" }).click();
+  await expect(card.locator(".rsvp-names li")).toHaveCount(1);
+
+  // Cancelling brings the count back to zero.
+  await page.goto("/movie-nights");
+  const hero2 = page.locator(".next-feature");
+  await hero2.locator(".rsvp-btn").click();
+  await expect(hero2.locator(".rsvp-btn")).toContainText("RSVP");
+  await expect(hero2.locator(".rsvp-count")).toHaveText("0 going");
 });
 
 test("movie nights offers a calendar subscription link", async ({ page }) => {
@@ -370,7 +399,7 @@ test("voting is open while undated and closes once a date is set", async ({
   const card = page.locator(".thaw-card").filter({ hasText: "Undated Pick" });
   await card.getByRole("button", { name: "Edit" }).click();
   const editForm = page.locator('form:has(#edit-title)');
-  await editForm.locator('input[type="date"]').fill("2031-12-25");
+  await editForm.locator('input[type="date"]').first().fill("2031-12-25");
   await editForm.getByRole("button", { name: "Save" }).click();
 
   // The card swaps back to a display row showing the saved date.

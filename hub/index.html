@@ -375,6 +375,25 @@
       .admin-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem; }
       .poll-set { color: #93d8b4; font-size: 0.8rem; display: block; margin-top: 0.25rem; }
 
+      /* ---- RSVP ---- */
+      .rsvp { margin-top: 1.25rem; display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start; }
+      .rsvp-stats { display: flex; gap: 0.75rem; align-items: baseline; flex-wrap: wrap; }
+      .rsvp-count { color: #93d8b4; font-weight: 600; }
+      .rsvp-deadline { color: #bdafb2; font-size: 0.8rem; }
+      .rsvp-mine { color: #93d8b4; font-size: 0.9rem; }
+      .rsvp-btn {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.8rem; letter-spacing: 0.04em;
+        padding: 0.5rem 0.9rem; border-radius: 4px;
+        background: #ee4b61; color: #0c0a0e; border: none; cursor: pointer;
+        transition: opacity 0.15s ease;
+      }
+      .rsvp-btn:hover { opacity: 0.9; }
+      .rsvp-btn:disabled { opacity: 0.5; cursor: default; }
+      .rsvp-btn.going { background: transparent; color: #93d8b4; border: 1px solid #93d8b4; }
+      .rsvp-names { margin: 0.5rem 0 0; padding-left: 1.2rem; color: #d8cdcf; }
+      .rsvp-names li { margin: 0.15rem 0; }
+
       /* ---- Movie Nights: next-feature marquee ---- */
       .kicker {
         font-family: 'IBM Plex Mono', monospace;

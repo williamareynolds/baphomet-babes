@@ -1,6 +1,7 @@
 use auth_client::AuthUser;
 use crate::api;
 use crate::components::calendar_subscribe::CalendarSubscribe;
+use crate::components::event_rsvp::EventRsvp;
 use leptos::prelude::*;
 use leptos_router::components::A;
 use thaw::{Button, ButtonAppearance, Card};
@@ -126,6 +127,7 @@ pub fn MovieNightsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                             }.into_any(),
                             Some(f) => {
                                 let poster = f.poster_url.clone();
+                                let rsvp_event = f.clone();
                                 // Voting is to pick a date — once one is set, it's over.
                                 let voting_open = f.poll_embed_url.is_some() && f.date.is_none();
                                 let date_label = f.date.clone().map(|d| pretty_date(&d))
@@ -154,6 +156,7 @@ pub fn MovieNightsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                                     </A>
                                                 </div>
                                             })}
+                                            <EventRsvp event=rsvp_event auth=auth />
                                         </div>
                                     </div>
                                 }.into_any()
@@ -172,7 +175,9 @@ pub fn MovieNightsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                         } else {
                             view! {
                                 <div>
-                                    {slice.into_iter().map(|e| view! {
+                                    {slice.into_iter().map(|e| {
+                                        let rsvp_event = e.clone();
+                                        view! {
                                         <Card>
                                             <div class="mn-row">
                                                 {e.poster_url.map(|url| view! {
@@ -189,9 +194,11 @@ pub fn MovieNightsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                                     {e.description.map(|d| view! {
                                                         <p class="mn-desc">{d}</p>
                                                     })}
+                                                    <EventRsvp event=rsvp_event auth=auth />
                                                 </div>
                                             </div>
                                         </Card>
+                                        }
                                     }).collect::<Vec<_>>()}
                                 </div>
 

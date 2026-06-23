@@ -5,5 +5,8 @@
   "date": "2026-06-13",
   "description": "A24 night",
   "poll_embed_url": "https://rcv123.org/embed/abc",
-  "poster_url": "https://example.com/poster.jpg"
+  "poster_url": "https://example.com/poster.jpg",
+  "rsvp_deadline": "2026-06-10",
+  "rsvp_count": 3,
+  "my_rsvp": true
 }

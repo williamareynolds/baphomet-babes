@@ -2,8 +2,9 @@ use shared::{
     Announcement, AuthResponse, BroadcastRequest, CalendarToken, ChatMessage,
     CreateAnnouncementRequest, CreateEventRequest, CreateInviteRequest, Event, InviteCode,
     LoginRequest, Notification, NotificationPrefs, Profile, RegisterPushTokenRequest,
-    RegisterRequest, SendChatRequest, UpdateAnnouncementRequest, UpdateEventRequest,
-    UpdateNotificationPrefs, UpdateProfileRequest, UpdateUserRequest, UserSummary,
+    RegisterRequest, Rsvp, RsvpRequest, SendChatRequest, UpdateAnnouncementRequest,
+    UpdateEventRequest, UpdateNotificationPrefs, UpdateProfileRequest, UpdateUserRequest,
+    UserSummary,
 };
 
 /// API base chosen at runtime from the page's hostname, so the URL can never be
@@ -254,6 +255,17 @@ pub async fn update_event(id: &str, req: UpdateEventRequest, token: &str) -> Res
 
 pub async fn delete_event(id: &str, token: &str) -> Result<(), String> {
     delete(&format!("/events/{id}"), token).await
+}
+
+/// RSVP (going=true) or cancel (going=false) for an event; returns the event
+/// with the refreshed count and the caller's new status.
+pub async fn rsvp_event(id: &str, going: bool, token: &str) -> Result<Event, String> {
+    post_json(&format!("/events/{id}/rsvp"), &RsvpRequest { going }, Some(token)).await
+}
+
+/// Admin-only: the list of members who've RSVP'd "going" to an event.
+pub async fn fetch_rsvps(id: &str, token: &str) -> Result<Vec<Rsvp>, String> {
+    get(&format!("/events/{id}/rsvps"), token).await
 }
 
 // ---- Notifications ----

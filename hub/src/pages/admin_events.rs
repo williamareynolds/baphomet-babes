@@ -2,7 +2,7 @@ use auth_client::AuthUser;
 use crate::api;
 use crate::components::admin_nav::AdminNav;
 use leptos::prelude::*;
-use shared::{CreateEventRequest, UpdateEventRequest};
+use shared::{CreateEventRequest, Rsvp, UpdateEventRequest};
 use thaw::{
     Button, ButtonAppearance, ButtonType, Card, Field, Input, InputType, Select, Textarea,
 };
@@ -30,10 +30,28 @@ pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
 
     let title = RwSignal::new(String::new());
     let date = RwSignal::new(String::new());
+    let rsvp_deadline = RwSignal::new(String::new());
     let event_type = RwSignal::new("main".to_string());
     let description = RwSignal::new(String::new());
     let poll_url = RwSignal::new(String::new());
     let poster_url = RwSignal::new(String::new());
+
+    // RSVP viewer: which event's attendee list is open, and the loaded names.
+    let open_rsvps: RwSignal<Option<String>> = RwSignal::new(None);
+    let rsvp_list: RwSignal<Option<Result<Vec<Rsvp>, String>>> = RwSignal::new(None);
+    let view_rsvps = move |id: String| {
+        let Some(user) = auth.get() else { return };
+        // Toggle closed if it's already the open one.
+        if open_rsvps.get() == Some(id.clone()) {
+            open_rsvps.set(None);
+            return;
+        }
+        open_rsvps.set(Some(id.clone()));
+        rsvp_list.set(None);
+        wasm_bindgen_futures::spawn_local(async move {
+            rsvp_list.set(Some(api::fetch_rsvps(&id, &user.token).await));
+        });
+    };
     let (form_error, set_form_error) = signal(String::new());
     let (form_success, set_form_success) = signal(String::new());
 
@@ -49,11 +67,13 @@ pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
             description: if description.get().is_empty() { None } else { Some(description.get()) },
             poll_embed_url: if poll_url.get().is_empty() { None } else { Some(poll_url.get()) },
             poster_url: if poster_url.get().is_empty() { None } else { Some(poster_url.get()) },
+            rsvp_deadline: if rsvp_deadline.get().is_empty() { None } else { Some(rsvp_deadline.get()) },
         };
         wasm_bindgen_futures::spawn_local(async move {
             match api::create_event(req, &user.token).await {
                 Ok(_) => {
                     set_form_success.set("Event created!".into());
+                    rsvp_deadline.set(String::new());
                     set_event_refresh.update(|n| *n += 1);
                 }
                 Err(e) => set_form_error.set(e),
@@ -73,6 +93,7 @@ pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let editing_id: RwSignal<Option<String>> = RwSignal::new(None);
     let edit_title = RwSignal::new(String::new());
     let edit_date = RwSignal::new(String::new());
+    let edit_rsvp_deadline = RwSignal::new(String::new());
     let edit_type = RwSignal::new(String::new());
     let edit_description = RwSignal::new(String::new());
     let edit_poll_url = RwSignal::new(String::new());
@@ -82,6 +103,7 @@ pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let handle_edit_start = move |e: shared::Event| {
         edit_title.set(e.title.clone());
         edit_date.set(e.date.clone().unwrap_or_default());
+        edit_rsvp_deadline.set(e.rsvp_deadline.clone().unwrap_or_default());
         edit_type.set(e.event_type.clone());
         edit_description.set(e.description.clone().unwrap_or_default());
         edit_poll_url.set(e.poll_embed_url.clone().unwrap_or_default());
@@ -99,6 +121,7 @@ pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
             event_type: Some(edit_type.get()),
             title: Some(edit_title.get()),
             date: Some(edit_date.get()),
+            rsvp_deadline: Some(edit_rsvp_deadline.get()),
             description: if edit_description.get().is_empty() { None } else { Some(edit_description.get()) },
             poll_embed_url: if edit_poll_url.get().is_empty() { None } else { Some(edit_poll_url.get()) },
             poster_url: if edit_poster_url.get().is_empty() { None } else { Some(edit_poster_url.get()) },
@@ -137,6 +160,9 @@ pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                         </Field>
                         <Field label="Date">
                             <Input value=date input_type=InputType::Date />
+                        </Field>
+                        <Field label="RSVP deadline (optional)">
+                            <Input value=rsvp_deadline input_type=InputType::Date />
                         </Field>
                         <Field label="Description (optional)">
                             <Textarea value=description placeholder="A few words about the pick…" />
@@ -190,6 +216,9 @@ pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                                         <Field label="Date">
                                                             <Input value=edit_date input_type=InputType::Date />
                                                         </Field>
+                                                        <Field label="RSVP deadline (optional)">
+                                                            <Input value=edit_rsvp_deadline input_type=InputType::Date />
+                                                        </Field>
                                                         <Field label="Description (optional)">
                                                             <Textarea value=edit_description />
                                                         </Field>
@@ -215,6 +244,10 @@ pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                             } else {
                                                 let e2 = e.clone();
                                                 let id2 = id.clone();
+                                                let rsvp_id = id.clone();
+                                                let this_id = id.clone();
+                                                let count = e.rsvp_count;
+                                                let deadline = e.rsvp_deadline.clone();
                                                 view! {
                                                     <div class="admin-row">
                                                         <div>
@@ -223,6 +256,12 @@ pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                                             </span>
                                                             <strong style="display:block;margin-top:0.25rem;">{e2.title.clone()}</strong>
                                                             <small style="color:#bdafb2;">{e2.date.clone().unwrap_or_else(|| "No date set".into())}</small>
+                                                            {deadline.clone().map(|d| view! {
+                                                                <small style="display:block;color:#bdafb2;">{format!("RSVP by {d}")}</small>
+                                                            })}
+                                                            <span style="display:block;margin-top:0.25rem;color:#93d8b4;font-size:0.85rem;">
+                                                                {format!("{count} going")}
+                                                            </span>
                                                             {e2.poll_embed_url.clone().map(|_| view! {
                                                                 <span class="poll-set">"✓ poll set"</span>
                                                             })}
@@ -234,6 +273,10 @@ pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                                         <div class="admin-actions">
                                                             <Button
                                                                 appearance=ButtonAppearance::Secondary
+                                                                on_click=move |_| view_rsvps(rsvp_id.clone())
+                                                            >{move || if open_rsvps.get() == Some(this_id.clone()) { "Hide RSVPs" } else { "View RSVPs" }}</Button>
+                                                            <Button
+                                                                appearance=ButtonAppearance::Secondary
                                                                 on_click=move |_| handle_edit_start(e2.clone())
                                                             >"Edit"</Button>
                                                             <Button
@@ -242,6 +285,22 @@ pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                                             >"Delete"</Button>
                                                         </div>
                                                     </div>
+                                                    {
+                                                        let row_id = id.clone();
+                                                        move || (open_rsvps.get() == Some(row_id.clone())).then(|| match rsvp_list.get() {
+                                                            None => view! { <p class="rsvp-names">"Loading…"</p> }.into_any(),
+                                                            Some(Err(e)) => view! { <p class="error">{e}</p> }.into_any(),
+                                                            Some(Ok(list)) if list.is_empty() =>
+                                                                view! { <p class="rsvp-names">"No RSVPs yet."</p> }.into_any(),
+                                                            Some(Ok(list)) => view! {
+                                                                <ul class="rsvp-names">
+                                                                    {list.into_iter().map(|r| view! {
+                                                                        <li>{r.author}</li>
+                                                                    }).collect::<Vec<_>>()}
+                                                                </ul>
+                                                            }.into_any(),
+                                                        })
+                                                    }
                                                 }.into_any()
                                             }
                                         }}

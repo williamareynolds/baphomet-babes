@@ -37,6 +37,9 @@ fn event_wire_format() {
         description: Some("A24 night".into()),
         poll_embed_url: Some("https://rcv123.org/embed/abc".into()),
         poster_url: Some("https://example.com/poster.jpg".into()),
+        rsvp_deadline: Some("2026-06-10".into()),
+        rsvp_count: 3,
+        my_rsvp: true,
     })
     .unwrap();
     assert_eq!(value, golden("event"));

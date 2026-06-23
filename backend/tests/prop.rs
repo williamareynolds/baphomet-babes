@@ -93,6 +93,7 @@ proptest! {
             description,
             poll_embed_url: None,
             poster_url,
+            rsvp_deadline: None,
             created_at,
         };
         let json = serde_json::to_value(&doc).unwrap();
