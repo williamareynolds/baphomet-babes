@@ -365,7 +365,13 @@
 
       .poll-frame { width: 100%; height: 700px; border: none; border-radius: 8px; }
 
-      .admin-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+      /* Wrap so the actions drop below the info on narrow phones; min-width:0 lets
+         the flex children shrink (default is auto, which refuses to go below
+         content width), and overflow-wrap breaks long unbreakable emails — both
+         needed or a long email pushes the row past the viewport with no way to
+         scroll right on iOS Safari. */
+      .admin-row { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+      .admin-row > * { min-width: 0; overflow-wrap: anywhere; }
       .admin-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem; }
       .poll-set { color: #93d8b4; font-size: 0.8rem; display: block; margin-top: 0.25rem; }
 
