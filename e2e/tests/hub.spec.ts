@@ -201,6 +201,33 @@ test("the install guide is reachable and lists steps", async ({ page }) => {
   await expect(page.locator(".install-details").first()).toBeVisible();
 });
 
+test("admin generates a named invite and can copy it", async ({ page }) => {
+  await login(page); // root is superadmin → admin
+  await page.goto("/admin/invites");
+
+  // Generate a code with contact details.
+  await page.getByPlaceholder("First name").fill("Morticia");
+  await page.getByPlaceholder("Last name").fill("Addams");
+  await page.getByPlaceholder("555-123-4567").fill("555-0666");
+  await page.getByRole("button", { name: "Generate" }).click();
+  await expect(page.locator(".success")).toContainText("created and copied");
+
+  // The new code appears in the listing, tagged with the invitee's name, and
+  // exposes a Copy button.
+  const card = page.locator(".thaw-card").filter({ hasText: "Morticia Addams" });
+  await expect(card).toBeVisible();
+  await expect(card.getByText("555-0666")).toBeVisible();
+  await expect(card.getByRole("button", { name: "Copy" })).toBeVisible();
+
+  // "Revoke all unused" clears the spare codes (confirm dialog auto-accepted).
+  page.on("dialog", (d) => d.accept());
+  await page.getByRole("button", { name: "Revoke all unused" }).click();
+  await expect(page.locator(".success")).toContainText("Revoked");
+  await expect(
+    page.locator(".thaw-card").filter({ hasText: "Morticia Addams" }),
+  ).toHaveCount(0);
+});
+
 test("profile exposes notification settings", async ({ page }) => {
   await login(page);
   await page.goto("/profile");

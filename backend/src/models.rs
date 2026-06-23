@@ -18,6 +18,12 @@ pub struct InviteCodeDoc {
     pub id: String,
     pub code: String,
     pub role: String,
+    #[serde(default)]
+    pub first_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phone: Option<String>,
     pub created_by: String,
     pub used: bool,
     pub used_by: Option<String>,

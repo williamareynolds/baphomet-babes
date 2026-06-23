@@ -9,8 +9,13 @@ const INVITES: &str = "invite_codes";
 pub fn router() -> axum::Router<AppState> {
     use axum::routing::{delete, post};
     axum::Router::new()
-        .route("/", post(create_invite).get(list_invites))
+        .route("/", post(create_invite).get(list_invites).delete(revoke_unused))
         .route("/{id}", delete(delete_invite))
+}
+
+/// An invite-detail field that arrives blank is stored as absent, not "".
+fn clean(v: Option<String>) -> Option<String> {
+    v.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
 }
 
 async fn create_invite(
@@ -33,10 +38,17 @@ async fn create_invite(
         .unwrap()
         .as_secs() as i64;
 
+    let first_name = req.first_name.trim().to_string();
+    let last_name = clean(req.last_name);
+    let phone = clean(req.phone);
+
     let doc = InviteCodeDoc {
         id: id.clone(),
         code: code.clone(),
         role: req.role.clone(),
+        first_name: first_name.clone(),
+        last_name: last_name.clone(),
+        phone: phone.clone(),
         created_by: claims.sub.clone(),
         used: false,
         used_by: None,
@@ -57,6 +69,9 @@ async fn create_invite(
         id,
         code,
         role: req.role,
+        first_name,
+        last_name,
+        phone,
         created_by: claims.sub,
         used: false,
         created_at: now,
@@ -82,12 +97,55 @@ async fn list_invites(
         id: d.id,
         code: d.code,
         role: d.role,
+        first_name: d.first_name,
+        last_name: d.last_name,
+        phone: d.phone,
         created_by: d.created_by,
         used: d.used,
         created_at: d.created_at,
     }).collect();
 
     Ok(Json(codes))
+}
+
+/// Revoke every unused invite the caller is allowed to delete. Superadmins clear
+/// all unused codes; admins clear only unused member codes (mirrors the per-code
+/// delete rules). Used codes are never touched. Returns the count revoked.
+async fn revoke_unused(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<Json<usize>> {
+    let claims = require_admin(&state, &headers).await?;
+
+    let docs: Vec<InviteCodeDoc> = state.db
+        .fluent()
+        .select()
+        .from(INVITES)
+        .obj()
+        .query()
+        .await
+        .context("failed to list invite codes")?;
+
+    let mut revoked = 0usize;
+    for doc in docs {
+        if doc.used {
+            continue;
+        }
+        if claims.role == "admin" && doc.role != "member" {
+            continue;
+        }
+        state.db
+            .fluent()
+            .delete()
+            .from(INVITES)
+            .document_id(&doc.id)
+            .execute()
+            .await
+            .context("failed to delete invite code")?;
+        revoked += 1;
+    }
+
+    Ok(Json(revoked))
 }
 
 async fn delete_invite(

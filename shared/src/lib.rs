@@ -166,6 +166,14 @@ pub struct InviteCode {
     pub id: String,
     pub code: String,
     pub role: String, // "admin" | "member"
+    /// The person this code was minted for. Required when creating; older codes
+    /// minted before this field existed deserialize to an empty string.
+    #[serde(default)]
+    pub first_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phone: Option<String>,
     pub created_by: String,
     pub used: bool,
     pub created_at: i64,
@@ -174,6 +182,12 @@ pub struct InviteCode {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateInviteRequest {
     pub role: String, // "admin" | "member"
+    #[serde(default)]
+    pub first_name: String,
+    #[serde(default)]
+    pub last_name: Option<String>,
+    #[serde(default)]
+    pub phone: Option<String>,
 }
 
 // User administration (superadmin control panel)

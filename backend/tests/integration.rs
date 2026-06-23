@@ -205,6 +205,95 @@ async fn invite_delete_and_role_rules() {
 }
 
 #[tokio::test]
+async fn invite_carries_contact_details() {
+    if !emulator_available() { return; }
+    let app = test_app("invitedetails").await;
+    let root = bootstrap_superadmin(&app).await;
+
+    // Full details round-trip on create and in the listing.
+    let (status, full) = send(&app, req("POST", "/invites", Some(&root), Some(json!({
+        "role": "member",
+        "first_name": "  Ada  ",
+        "last_name": "Lovelace",
+        "phone": "555-0101",
+    })))).await;
+    assert_eq!(status, StatusCode::OK, "create failed: {full}");
+    assert_eq!(full["first_name"], "Ada", "first name is trimmed");
+    assert_eq!(full["last_name"], "Lovelace");
+    assert_eq!(full["phone"], "555-0101");
+
+    // Blank optional fields are dropped, not stored as empty strings.
+    let (status, sparse) = send(&app, req("POST", "/invites", Some(&root), Some(json!({
+        "role": "member",
+        "first_name": "Grace",
+        "last_name": "   ",
+        "phone": "",
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(sparse["first_name"], "Grace");
+    assert!(sparse["last_name"].is_null(), "blank last name omitted");
+    assert!(sparse["phone"].is_null(), "blank phone omitted");
+
+    // Details survive into the listing.
+    let (status, list) = send(&app, req("GET", "/invites", Some(&root), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    let ada = list.as_array().unwrap().iter()
+        .find(|c| c["first_name"] == "Ada")
+        .expect("Ada's invite is listed");
+    assert_eq!(ada["phone"], "555-0101");
+}
+
+#[tokio::test]
+async fn revoke_unused_respects_role_and_keeps_used() {
+    if !emulator_available() { return; }
+    let app = test_app("revokeunused").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (admin, _) = invite_and_register(&app, &root, "admin@test.com", "admin1", "admin").await;
+
+    // Superadmin mints: one member code (consumed below), one spare member code,
+    // and one admin code.
+    let (_, used_invite) = send(&app, req("POST", "/invites", Some(&root), Some(json!({
+        "role": "member", "first_name": "Used",
+    })))).await;
+    let used_code = used_invite["code"].as_str().unwrap().to_string();
+    let (status, _) = register(&app, "used@test.com", "usedone", &used_code).await;
+    assert_eq!(status, StatusCode::OK);
+
+    for name in ["SpareOne", "SpareTwo"] {
+        let (status, _) = send(&app, req("POST", "/invites", Some(&root), Some(json!({
+            "role": "member", "first_name": name,
+        })))).await;
+        assert_eq!(status, StatusCode::OK);
+    }
+    let (status, _) = send(&app, req("POST", "/invites", Some(&root), Some(json!({
+        "role": "admin", "first_name": "FutureAdmin",
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Admin bulk-revoke clears only the unused MEMBER codes; the admin code and
+    // the already-used code are left alone.
+    let (status, n) = send(&app, req("DELETE", "/invites", Some(&admin), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(n.as_u64().unwrap(), 2, "two unused member codes revoked");
+
+    let (_, list) = send(&app, req("GET", "/invites", Some(&root), None)).await;
+    let codes = list.as_array().unwrap();
+    assert!(codes.iter().any(|c| c["role"] == "admin"), "admin code survives");
+    assert!(codes.iter().any(|c| c["used"] == true), "used code survives");
+    assert!(!codes.iter().any(|c| c["role"] == "member" && c["used"] == false),
+        "no unused member codes remain");
+
+    // Superadmin bulk-revoke now clears the remaining unused (admin) code.
+    let (status, n) = send(&app, req("DELETE", "/invites", Some(&root), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(n.as_u64().unwrap(), 1, "the unused admin code revoked");
+
+    let (_, list) = send(&app, req("GET", "/invites", Some(&root), None)).await;
+    assert!(!list.as_array().unwrap().iter().any(|c| c["used"] == false),
+        "all unused codes gone; only the used one remains");
+}
+
+#[tokio::test]
 async fn duplicate_email_rejected() {
     if !emulator_available() { return; }
     let app = test_app("dupemail").await;

@@ -30,6 +30,24 @@
         overflow-x: clip;
       }
 
+      /* iOS standalone: a `position: sticky` nav does NOT reliably paint into
+         the status-bar safe-area inset, so page content scrolls into view above
+         the bar (the "body above navbar" bug). Cover that strip with a fixed,
+         always-present solid band. Height collapses to 0 where there's no inset
+         (desktop / non-notched), so it's a no-op everywhere else. Sits above the
+         nav (z 100) but only spans the inset, so it never hides nav content. */
+      body::before {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: env(safe-area-inset-top);
+        background: #0c0a0e;
+        z-index: 150;
+        pointer-events: none;
+      }
+
       body::after {
         content: '';
         position: fixed;

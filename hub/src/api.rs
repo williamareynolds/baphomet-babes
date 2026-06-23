@@ -110,6 +110,21 @@ async fn delete(path: &str, token: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// DELETE that returns a JSON body (e.g. a count of affected records).
+async fn delete_returning<T: serde::de::DeserializeOwned>(path: &str, token: &str) -> Result<T, String> {
+    let req = gloo_net::http::Request::delete(&format!("{}{path}", api_base()))
+        .header("Authorization", &format!("Bearer {token}"));
+    let resp = attach_app_check(req)
+        .await
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.ok() {
+        return Err("delete failed".into());
+    }
+    resp.json::<T>().await.map_err(|e| e.to_string())
+}
+
 /// DELETE carrying a JSON body (used to unregister a specific push token).
 async fn delete_json<B: serde::Serialize>(path: &str, body: &B, token: &str) -> Result<(), String> {
     let req = gloo_net::http::Request::delete(&format!("{}{path}", api_base()))
@@ -202,6 +217,11 @@ pub async fn create_invite(req: CreateInviteRequest, token: &str) -> Result<Invi
 
 pub async fn delete_invite(id: &str, token: &str) -> Result<(), String> {
     delete(&format!("/invites/{id}"), token).await
+}
+
+/// Revoke every unused invite the caller may delete; returns the count revoked.
+pub async fn revoke_unused_invites(token: &str) -> Result<usize, String> {
+    delete_returning("/invites", token).await
 }
 
 pub async fn fetch_announcements(token: &str) -> Result<Vec<Announcement>, String> {
