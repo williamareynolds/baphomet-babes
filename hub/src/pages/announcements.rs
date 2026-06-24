@@ -37,11 +37,11 @@ pub fn AnnouncementsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     view! {
         <main>
             <div style="margin-bottom:3.5rem;">
-                <h1 style="font-size:5rem;line-height:1;margin-bottom:0.15rem;">"Baphomet Babes"</h1>
+                <h1 style="font-size:clamp(2.75rem,14vw,5rem);line-height:1;margin-bottom:0.15rem;">"Baphomet Babes"</h1>
                 <p style="font-family:'IBM Plex Mono',monospace;font-size:0.75rem;letter-spacing:0.22em;text-transform:uppercase;color:#ee4b61;margin-bottom:1.5rem;">
                     "of Bentonville"
                 </p>
-                <p style="font-size:1.25rem;line-height:1.7;color:#bdafb2;max-width:560px;">
+                <p style="font-size:1.25rem;line-height:1.7;color:#bdafb2;max-width:min(560px,100%);">
                     "An inclusive collective for curious minds and bold spirits. "
                     "Cultural events, scientific discussions, crafts, sports, and more."
                 </p>

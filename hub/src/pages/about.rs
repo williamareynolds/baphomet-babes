@@ -12,9 +12,9 @@ pub fn AboutPage() -> impl IntoView {
 
     view! {
         <main>
-            <div style="max-width:680px;">
+            <div style="max-width:min(680px,100%);">
                 <div style="margin-bottom:3rem;">
-                    <h1 style="font-size:4.5rem;line-height:1;margin-bottom:0.1rem;">"Baphomet Babes"</h1>
+                    <h1 style="font-size:clamp(2.5rem,13vw,4.5rem);line-height:1;margin-bottom:0.1rem;">"Baphomet Babes"</h1>
                     <p style="font-family:'IBM Plex Mono',monospace;font-size:0.75rem;letter-spacing:0.22em;text-transform:uppercase;color:#ee4b61;margin-bottom:2rem;">
                         "of Bentonville"
                     </p>

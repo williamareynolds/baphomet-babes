@@ -90,7 +90,7 @@ pub fn LoginPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
             <p style="font-family:'IBM Plex Mono',monospace;font-size:0.55rem;letter-spacing:0.35em;text-transform:uppercase;color:#ad9ea4;margin-bottom:0.5rem;">
                 "Members Only"
             </p>
-            <h1 style="font-size:4.5rem;line-height:0.92;letter-spacing:0.04em;color:#f3ebe3;margin-bottom:0.35rem;">
+            <h1 style="font-size:clamp(3rem,15vw,4.5rem);line-height:0.92;letter-spacing:0.04em;color:#f3ebe3;margin-bottom:0.35rem;">
                 "Baphomet"
                 <span style="display:block;color:#ee4b61;">"Babes"</span>
             </h1>
