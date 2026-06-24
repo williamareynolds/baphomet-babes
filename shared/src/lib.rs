@@ -225,6 +225,9 @@ pub struct UserSummary {
     pub role: String, // "superadmin" | "admin" | "member"
     pub disabled: bool,
     pub created_at: i64,
+    /// How many devices this user has enrolled for push notifications.
+    #[serde(default)]
+    pub device_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

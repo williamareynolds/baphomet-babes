@@ -1010,3 +1010,41 @@ async fn user_admin_roles_disable_and_guards() {
     let (status, _) = send(&app, req("PUT", "/users/does-not-exist", Some(&root), Some(json!({ "role": "member" })))).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn user_list_reports_enrolled_device_count() {
+    if !emulator_available() { return; }
+    let app = test_app("devicecount").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, member_id) = invite_and_register(&app, &root, "m@test.com", "member1", "member").await;
+
+    // Helper: the device_count the user list reports for `member_id`.
+    let count_for = |list: &Value| -> i64 {
+        list.as_array().unwrap().iter()
+            .find(|u| u["id"] == member_id.as_str())
+            .unwrap()["device_count"].as_i64().unwrap()
+    };
+
+    // No tokens registered yet.
+    let (_, list) = send(&app, req("GET", "/users", Some(&root), None)).await;
+    assert_eq!(count_for(&list), 0);
+
+    // Member enrolls two devices.
+    for tok in ["device-token-a", "device-token-b"] {
+        let (status, _) = send(&app, req("PUT", "/notifications/token", Some(&member), Some(json!({ "token": tok })))).await;
+        assert_eq!(status, StatusCode::OK);
+    }
+    let (_, list) = send(&app, req("GET", "/users", Some(&root), None)).await;
+    assert_eq!(count_for(&list), 2);
+
+    // Re-registering the same token is idempotent (still 2, not 3).
+    let (_, _) = send(&app, req("PUT", "/notifications/token", Some(&member), Some(json!({ "token": "device-token-a" })))).await;
+    let (_, list) = send(&app, req("GET", "/users", Some(&root), None)).await;
+    assert_eq!(count_for(&list), 2);
+
+    // Unregistering one drops the count, and the update_user response carries it too.
+    let (status, _) = send(&app, req("DELETE", "/notifications/token", Some(&member), Some(json!({ "token": "device-token-a" })))).await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, updated) = send(&app, req("PUT", &format!("/users/{member_id}"), Some(&root), Some(json!({ "role": "member" })))).await;
+    assert_eq!(updated["device_count"], 1);
+}

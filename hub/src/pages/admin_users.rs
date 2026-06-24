@@ -61,6 +61,7 @@ pub fn AdminUsersPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                             {list.into_iter().map(|u| {
                                 let is_self = u.id == my_id();
                                 let disabled = u.disabled;
+                                let device_count = u.device_count;
                                 // `default_value` is required: without it Thaw's Select clobbers the
                                 // bound signal to its first <option> on mount. The current role here
                                 // both seeds the signal and selects the right <option> on screen.
@@ -98,6 +99,14 @@ pub fn AdminUsersPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                                         "disabled"
                                                     </span>
                                                 </Show>
+                                                <span style={format!("display:block;margin-top:0.25rem;font-size:0.8rem;color:{};",
+                                                    if device_count > 0 { "#93d8b4" } else { "#bdafb2" })}>
+                                                    {if device_count == 1 {
+                                                        "1 device enrolled".to_string()
+                                                    } else {
+                                                        format!("{device_count} devices enrolled")
+                                                    }}
+                                                </span>
                                             </div>
                                             <div class="admin-actions">
                                                 {if is_self {

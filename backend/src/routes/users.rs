@@ -1,9 +1,11 @@
-use crate::{AppState, auth::require_superadmin, error::{AppError, AppResult}, models::UserDoc};
+use crate::{AppState, auth::require_superadmin, error::{AppError, AppResult}, models::{PushTokenDoc, UserDoc}};
 use anyhow::Context;
 use axum::{Json, extract::{Path, State}, http::HeaderMap};
 use shared::{UpdateUserRequest, UserSummary};
+use std::collections::HashMap;
 
 const USERS: &str = "users";
+const PUSH_TOKENS: &str = "push_tokens";
 
 /// Mounted at /users — superadmin-only control panel.
 pub fn router() -> axum::Router<AppState> {
@@ -13,7 +15,7 @@ pub fn router() -> axum::Router<AppState> {
         .route("/{id}", put(update_user))
 }
 
-fn doc_to_summary(d: UserDoc) -> UserSummary {
+fn doc_to_summary(d: UserDoc, device_count: i64) -> UserSummary {
     UserSummary {
         id: d.id,
         email: d.email,
@@ -21,6 +23,7 @@ fn doc_to_summary(d: UserDoc) -> UserSummary {
         role: d.role,
         disabled: d.disabled,
         created_at: d.created_at,
+        device_count,
     }
 }
 
@@ -39,7 +42,28 @@ async fn list_users(
         .await
         .context("failed to list users")?;
 
-    let mut users: Vec<UserSummary> = docs.into_iter().map(doc_to_summary).collect();
+    // One scan of the push-token collection (small at our scale) yields each
+    // user's enrolled-device count — one token doc per device.
+    let tokens: Vec<PushTokenDoc> = state.db
+        .fluent()
+        .select()
+        .from(PUSH_TOKENS)
+        .obj()
+        .query()
+        .await
+        .context("failed to list push tokens")?;
+    let mut counts: HashMap<String, i64> = HashMap::new();
+    for t in &tokens {
+        *counts.entry(t.user_id.clone()).or_insert(0) += 1;
+    }
+
+    let mut users: Vec<UserSummary> = docs
+        .into_iter()
+        .map(|d| {
+            let n = counts.get(&d.id).copied().unwrap_or(0);
+            doc_to_summary(d, n)
+        })
+        .collect();
     users.sort_by(|a, b| a.username.to_lowercase().cmp(&b.username.to_lowercase()));
     Ok(Json(users))
 }
@@ -90,5 +114,15 @@ async fn update_user(
         .await
         .context("failed to update user")?;
 
-    Ok(Json(doc_to_summary(updated)))
+    let tokens: Vec<PushTokenDoc> = state.db
+        .fluent()
+        .select()
+        .from(PUSH_TOKENS)
+        .filter(|q| q.field("user_id").eq(&id))
+        .obj()
+        .query()
+        .await
+        .context("failed to count push tokens")?;
+
+    Ok(Json(doc_to_summary(updated, tokens.len() as i64)))
 }
