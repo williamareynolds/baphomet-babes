@@ -79,6 +79,17 @@ test-e2e-headed *args:
     cd e2e
     nvm exec --silent npx playwright test --headed {{args}}
 
+# Mobile-layout checks only: the WebKit (iOS Safari engine) project at an iPhone
+# viewport. Runs the chromium project first as a dependency (registers the
+# bootstrap account it logs in with).
+test-e2e-mobile:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    export NVM_DIR="$HOME/.nvm"
+    source /usr/local/opt/nvm/nvm.sh
+    cd e2e
+    nvm exec --silent npx playwright test --project mobile-safari
+
 test-all: test test-integration test-e2e
 
 # Firestore security rules — default-deny (backend SA bypasses; clients blocked).

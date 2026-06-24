@@ -1,4 +1,4 @@
-import { defineConfig } from "@playwright/test";
+import { defineConfig, devices } from "@playwright/test";
 
 // Java 21+ for the Firestore emulator (harmless prefix if the dir is absent).
 const JAVA_PATH = "/usr/local/opt/openjdk/bin";
@@ -15,6 +15,26 @@ export default defineConfig({
   timeout: 60_000,
   expect: { timeout: 10_000 },
   reporter: [["list"]],
+  // The functional suite (hub.spec.ts) runs on Chromium; it builds shared,
+  // single-use backend state (the bootstrap superadmin), so it must run exactly
+  // once. The mobile suite (mobile.spec.ts) runs the SAME backend through
+  // WebKit at an iPhone viewport — that's the real iOS Safari engine, where our
+  // layout bugs actually surface. It depends on `chromium` so the bootstrap
+  // account exists before it logs in, and is scoped to its own file so the
+  // functional tests never double-run (which would fail on the used boot code).
+  projects: [
+    {
+      name: "chromium",
+      use: { ...devices["Desktop Chrome"] },
+      testIgnore: /mobile\.spec\.ts/,
+    },
+    {
+      name: "mobile-safari",
+      use: { ...devices["iPhone 14 Pro Max"] },
+      testMatch: /mobile\.spec\.ts/,
+      dependencies: ["chromium"],
+    },
+  ],
   use: {
     baseURL: "http://localhost:3001",
     trace: "retain-on-failure",
