@@ -211,6 +211,7 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                     </Button>
                 </form>
 
+                <div class="settings-card">
                 <Card>
                     <h2 id="notifications">"Notifications"</h2>
                     <Show
@@ -250,6 +251,7 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                         </Button>
                     </div>
                 </Card>
+                </div>
             </Show>
         </main>
     }

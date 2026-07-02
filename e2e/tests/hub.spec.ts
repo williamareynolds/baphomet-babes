@@ -229,6 +229,40 @@ test("a member posts a ride, is auto-attending, and can bail and rejoin", async 
   ).toHaveCount(0);
 });
 
+test("the rides page notification toggle syncs with profile settings", async ({
+  page,
+}) => {
+  await login(page);
+  await page.goto("/rides");
+
+  // The opt-in toggle appears once prefs load; the channel is off by default.
+  const toggle = page.locator(".ride-notify").getByRole("switch");
+  await expect(toggle).toBeVisible();
+  await expect(toggle).not.toBeChecked();
+
+  // Flipping it saves immediately (no save button) — wait for the PUT to land
+  // before navigating away, then the profile page's channel switch agrees.
+  const saved = page.waitForResponse(
+    (r) => r.url().includes("/notifications/prefs") && r.request().method() === "PUT",
+  );
+  await toggle.check();
+  await saved;
+  await page.goto("/profile");
+  // Mountain Bike Rides is the last of the six switches on the profile page.
+  await expect(page.getByRole("switch").last()).toBeChecked();
+
+  // Turn it back off from the rides page so the channel ends where it started.
+  await page.goto("/rides");
+  await expect(toggle).toBeChecked();
+  const savedOff = page.waitForResponse(
+    (r) => r.url().includes("/notifications/prefs") && r.request().method() === "PUT",
+  );
+  await toggle.uncheck();
+  await savedOff;
+  await page.goto("/profile");
+  await expect(page.getByRole("switch").last()).not.toBeChecked();
+});
+
 test("movie nights offers a calendar subscription link", async ({ page }) => {
   await login(page);
   await page.goto("/movie-nights");

@@ -4,8 +4,8 @@
 use auth_client::AuthUser;
 use crate::api;
 use leptos::prelude::*;
-use shared::{CreateRideRequest, RIDE_LOCATIONS, Ride};
-use thaw::{Button, ButtonAppearance, ButtonType, Card, Field, Input, InputType, Select};
+use shared::{CreateRideRequest, RIDE_LOCATIONS, Ride, UpdateNotificationPrefs};
+use thaw::{Button, ButtonAppearance, ButtonType, Card, Field, Input, InputType, Select, Switch};
 use wasm_bindgen_futures::spawn_local;
 
 /// Now as "YYYY-MM-DDTHH:MM" local, comparable to ride datetimes.
@@ -178,6 +178,45 @@ pub fn RidesPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     });
     let on_change = Callback::new(move |_| set_refresh.update(|n| *n += 1));
 
+    // ---- Mountain-bike notification channel toggle ----
+    // The channel is opt-in (off by default), so members who only visit this
+    // page would never discover it buried in profile settings. Saves on flip.
+    let notif_on = RwSignal::new(false);
+    let notif_loaded = RwSignal::new(false);
+    // Last value persisted to the server; guards the save effect against
+    // firing for the initial load (and against redundant writes).
+    let notif_saved: RwSignal<Option<bool>> = RwSignal::new(None);
+
+    Effect::new(move |_| {
+        let Some(user) = auth.get() else { return };
+        spawn_local(async move {
+            if let Ok(p) = api::fetch_notif_prefs(&user.token).await {
+                notif_saved.set(Some(p.mountain_bike));
+                notif_on.set(p.mountain_bike);
+                notif_loaded.set(true);
+            }
+        });
+    });
+
+    Effect::new(move |_| {
+        let want = notif_on.get();
+        if !notif_loaded.get_untracked() || notif_saved.get_untracked() == Some(want) {
+            return;
+        }
+        let Some(user) = auth.get_untracked() else { return };
+        notif_saved.set(Some(want));
+        spawn_local(async move {
+            let req = UpdateNotificationPrefs {
+                announcements: None,
+                general: None,
+                movie_night: None,
+                chat: None,
+                mountain_bike: Some(want),
+            };
+            let _ = api::update_notif_prefs(req, &user.token).await;
+        });
+    });
+
     // ---- Post-a-ride form ----
     let location = RwSignal::new(RIDE_LOCATIONS[0].to_string());
     let start_at = RwSignal::new(String::new());
@@ -253,6 +292,12 @@ pub fn RidesPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
         <main>
             <h1>"Mountain Bike Rides"</h1>
             <Show when=move || auth.get().is_some()>
+                <Show when=move || notif_loaded.get()>
+                    <div class="ride-notify">
+                        <Switch checked=notif_on label="Notify me when someone posts a ride" />
+                    </div>
+                </Show>
+
                 <Card>
                     <h2>"Post a Ride"</h2>
                     <form on:submit=handle_create>

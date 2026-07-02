@@ -31,7 +31,9 @@
          max-width:100% + clip is a belt-and-braces guard so the page can never
          resolve wider than the viewport on iOS Safari (where a fixed-px child
          max-width could otherwise drag the column past the screen edge). */
-      html { background: #0c0a0e; max-width: 100%; overflow-x: clip; }
+      /* color-scheme keeps native chrome (scrollbars, datetime pickers, select
+         dropdowns) dark instead of OS-default white. */
+      html { background: #0c0a0e; max-width: 100%; overflow-x: clip; color-scheme: dark; }
 
       body {
         font-family: 'Crimson Pro', Georgia, serif;
@@ -359,8 +361,32 @@
          siblings (the remove button) off-screen. */
       .thaw-input, .thaw-select, .thaw-textarea { width: 100%; min-width: 0; }
 
+      /* Textareas (bio, announcements): room for a few sentences before the
+         scrollbar appears. */
+      .thaw-textarea textarea { min-height: 6rem; }
+
+      /* Switches: Fluent pads the toggle 8px on every side, which indents it
+         off the column edge and inflates row height. Flush left, tighter rows;
+         the label keeps matching padding so the two stay vertically centred. */
+      .thaw-switch__indicator {
+        margin: var(--spacingVerticalXS) var(--spacingHorizontalS) var(--spacingVerticalXS) 0;
+      }
+      .thaw-switch__label {
+        padding-top: var(--spacingVerticalXS);
+        padding-bottom: var(--spacingVerticalXS);
+      }
+
+      /* Settings pages (profile): the notifications card sits in the same
+         480px rail as the form above it instead of spanning the whole main
+         column, with a clear break below the form's save button. */
+      .settings-card { max-width: 480px; margin-top: 2.75rem; }
+
       /* ---- Page-specific helpers ---- */
       .section-heading { margin-top: 2rem; }
+
+      /* Rides: the notification opt-in toggle sits between the title and the
+         post form as a quiet one-liner. */
+      .ride-notify { margin: -0.75rem 0 1.5rem; }
 
       .event-date { color: #bdafb2; }
 
