@@ -388,6 +388,19 @@
          post form as a quiet one-liner. */
       .ride-notify { margin: -0.75rem 0 1.5rem; }
 
+      /* Member directory cards: contact lines in the same mono style as the
+         profile detail page. overflow-wrap so a long email can't push the card
+         past the viewport on phones. */
+      .member-contact {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.68rem;
+        color: #ad9ea4;
+        overflow-wrap: anywhere;
+      }
+
       .event-date { color: #bdafb2; }
 
       .poster-wrap { text-align: center; margin: 1rem 0; }

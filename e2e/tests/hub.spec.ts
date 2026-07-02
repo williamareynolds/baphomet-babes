@@ -71,6 +71,10 @@ test("edit profile and publish it", async ({ page }) => {
 
   await page.getByPlaceholder("Leave blank to use username").fill("Root Babe");
   await page.getByPlaceholder("they/them, she/her, …").fill("they/them");
+  // Email and phone share a placeholder; email comes first in the form.
+  const contact = page.getByPlaceholder("Optional — only shown if profile is public");
+  await contact.nth(0).fill("root@babes.test");
+  await contact.nth(1).fill("479-555-0666");
   await page
     .getByPlaceholder("A few words about yourself…")
     .fill("Founding member. Crafts, cosmos, and cinema.");
@@ -93,8 +97,11 @@ test("published profile appears in the member directory", async ({ page }) => {
   await login(page);
   await page.goto("/members");
 
-  const card = page.getByText("Root Babe");
+  const card = page.locator(".thaw-card").filter({ hasText: "Root Babe" });
   await expect(card).toBeVisible();
+  // Directory cards surface the published contact details directly.
+  await expect(card.locator(".member-contact")).toContainText("root@babes.test");
+  await expect(card.locator(".member-contact")).toContainText("479-555-0666");
   await card.click();
 
   // Full profile page renders the published details.

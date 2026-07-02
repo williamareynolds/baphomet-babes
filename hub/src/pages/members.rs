@@ -71,6 +71,12 @@ pub fn MembersPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                         <p style="color:#ad9ea4;font-size:0.95rem;line-height:1.5;">{preview}</p>
                                     }
                                 })}
+                                {(m.email.is_some() || m.phone.is_some()).then(|| view! {
+                                    <div class="member-contact">
+                                        {m.email.map(|e| view! { <span>{e}</span> })}
+                                        {m.phone.map(|ph| view! { <span>{ph}</span> })}
+                                    </div>
+                                })}
                             </Card>
                         </A>
                     }
