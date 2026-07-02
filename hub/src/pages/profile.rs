@@ -2,7 +2,7 @@ use crate::api;
 use auth_client::{AuthUser, enable_push, notif_permission};
 use leptos::prelude::*;
 use shared::{Profile, ProfileLink, UpdateNotificationPrefs, UpdateProfileRequest};
-use thaw::{Button, ButtonAppearance, ButtonType, Card, Field, Input, Switch, Textarea};
+use thaw::{Button, ButtonAppearance, ButtonType, Card, Field, Input, InputType, Switch, Textarea};
 
 #[component]
 pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
@@ -17,6 +17,7 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let pronouns = RwSignal::new(String::new());
     let avatar_url = RwSignal::new(String::new());
     let email = RwSignal::new(String::new());
+    let phone = RwSignal::new(String::new());
     let is_public = RwSignal::new(false);
     // Links: each row owns two stable signals so Thaw Inputs can bind to them
     // directly and survive add/remove re-renders without recreating state.
@@ -34,6 +35,7 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                         pronouns.set(p.pronouns.clone().unwrap_or_default());
                         avatar_url.set(p.avatar_url.clone().unwrap_or_default());
                         email.set(p.email.clone().unwrap_or_default());
+                        phone.set(p.phone.clone().unwrap_or_default());
                         is_public.set(p.is_public);
                         links.set(p.links.iter().map(|l| (RwSignal::new(l.label.clone()), RwSignal::new(l.url.clone()))).collect());
                         profile.set(Some(p));
@@ -50,6 +52,7 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let ch_general = RwSignal::new(true);
     let ch_movie = RwSignal::new(true);
     let ch_chat = RwSignal::new(false); // chat is opt-in
+    let ch_mtb = RwSignal::new(false); // mountain bike is opt-in
     let notif_msg = RwSignal::new(String::new());
 
     Effect::new(move |_| {
@@ -61,6 +64,7 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                     ch_general.set(p.general);
                     ch_movie.set(p.movie_night);
                     ch_chat.set(p.chat);
+                    ch_mtb.set(p.mountain_bike);
                 }
             });
         }
@@ -90,6 +94,7 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
             general: Some(ch_general.get()),
             movie_night: Some(ch_movie.get()),
             chat: Some(ch_chat.get()),
+            mountain_bike: Some(ch_mtb.get()),
         };
         wasm_bindgen_futures::spawn_local(async move {
             match api::update_notif_prefs(req, &user.token).await {
@@ -112,6 +117,7 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                 pronouns: Some(pronouns.get()).filter(|s| !s.is_empty()),
                 avatar_url: Some(avatar_url.get()).filter(|s| !s.is_empty()),
                 email: Some(email.get()).filter(|s| !s.is_empty()),
+                phone: Some(phone.get()).filter(|s| !s.is_empty()),
                 links: Some(
                     links.get()
                         .into_iter()
@@ -163,6 +169,9 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                     </Field>
                     <Field label="Email (shown on profile)">
                         <Input value=email placeholder="Optional — only shown if profile is public" />
+                    </Field>
+                    <Field label="Phone (shown on profile)">
+                        <Input value=phone input_type=InputType::Tel placeholder="Optional — only shown if profile is public" />
                     </Field>
                     <Field label="Avatar URL">
                         <Input value=avatar_url placeholder="https://…" />
@@ -228,6 +237,7 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                         <Switch checked=ch_general label="General" />
                         <Switch checked=ch_movie label="Movie Nights" />
                         <Switch checked=ch_chat label="Group Chat" />
+                        <Switch checked=ch_mtb label="Mountain Bike Rides" />
                     </div>
 
                     <Show when=move || !notif_msg.get().is_empty()>

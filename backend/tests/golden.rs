@@ -55,6 +55,7 @@ fn profile_wire_format() {
         pronouns: Some("they/them".into()),
         avatar_url: Some("https://example.com/avatar.png".into()),
         email: Some("babe@baphometbabes.com".into()),
+        phone: Some("479-555-0142".into()),
         links: vec![ProfileLink { label: "Website".into(), url: "https://example.com".into() }],
         is_public: true,
         updated_at: 1781136000,

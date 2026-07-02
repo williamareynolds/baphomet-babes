@@ -6,4 +6,5 @@ pub mod events;
 pub mod invites;
 pub mod notifications;
 pub mod profile;
+pub mod rides;
 pub mod users;

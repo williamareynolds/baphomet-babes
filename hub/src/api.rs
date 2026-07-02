@@ -1,8 +1,8 @@
 use shared::{
     Announcement, AuthResponse, BroadcastRequest, CalendarToken, ChatMessage,
-    CreateAnnouncementRequest, CreateEventRequest, CreateInviteRequest, Event, InviteCode,
-    LoginRequest, Notification, NotificationPrefs, Profile, RegisterPushTokenRequest,
-    RegisterRequest, Rsvp, RsvpRequest, SendChatRequest, UpdateAnnouncementRequest,
+    CreateAnnouncementRequest, CreateEventRequest, CreateInviteRequest, CreateRideRequest, Event,
+    InviteCode, LoginRequest, Notification, NotificationPrefs, Profile, RegisterPushTokenRequest,
+    RegisterRequest, Ride, Rsvp, RsvpRequest, SendChatRequest, UpdateAnnouncementRequest,
     UpdateEventRequest, UpdateNotificationPrefs, UpdateProfileRequest, UpdateUserRequest,
     UserSummary,
 };
@@ -266,6 +266,26 @@ pub async fn rsvp_event(id: &str, going: bool, token: &str) -> Result<Event, Str
 /// Admin-only: the list of members who've RSVP'd "going" to an event.
 pub async fn fetch_rsvps(id: &str, token: &str) -> Result<Vec<Rsvp>, String> {
     get(&format!("/events/{id}/rsvps"), token).await
+}
+
+// ---- Mountain bike rides ----
+
+pub async fn fetch_rides(token: &str) -> Result<Vec<Ride>, String> {
+    get("/rides", token).await
+}
+
+pub async fn create_ride(req: CreateRideRequest, token: &str) -> Result<Ride, String> {
+    post_json("/rides", &req, Some(token)).await
+}
+
+pub async fn delete_ride(id: &str, token: &str) -> Result<(), String> {
+    delete(&format!("/rides/{id}"), token).await
+}
+
+/// Join (going=true) or bail on (going=false) a ride; returns the ride with the
+/// refreshed attendee list and the caller's new status.
+pub async fn attend_ride(id: &str, going: bool, token: &str) -> Result<Ride, String> {
+    post_json(&format!("/rides/{id}/attend"), &RsvpRequest { going }, Some(token)).await
 }
 
 // ---- Notifications ----

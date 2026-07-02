@@ -136,6 +136,9 @@ pub fn MemberProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                 {p.email.clone().map(|e| view! {
                                     <p style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#ad9ea4;margin-top:0.25rem;">{e}</p>
                                 })}
+                                {p.phone.clone().map(|ph| view! {
+                                    <p style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#ad9ea4;margin-top:0.25rem;">{ph}</p>
+                                })}
                             </div>
                         </div>
 

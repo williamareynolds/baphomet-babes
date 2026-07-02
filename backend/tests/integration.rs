@@ -1048,3 +1048,144 @@ async fn user_list_reports_enrolled_device_count() {
     let (_, updated) = send(&app, req("PUT", &format!("/users/{member_id}"), Some(&root), Some(json!({ "role": "member" })))).await;
     assert_eq!(updated["device_count"], 1);
 }
+
+#[tokio::test]
+async fn ride_create_join_and_visibility() {
+    if !emulator_available() { return; }
+    let app = test_app("rides").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, _) = invite_and_register(&app, &root, "r1@test.com", "rider1", "member").await;
+    let (member2, _) = invite_and_register(&app, &root, "r2@test.com", "rider2", "member").await;
+
+    // Any member (not just admins) can post a ride, and is automatically going.
+    let (status, created) = send(&app, req("POST", "/rides", Some(&member), Some(json!({
+        "location": "Slaughter Pen", "start_at": "2099-06-01T09:00", "end_at": "2099-06-01T11:30"
+    })))).await;
+    assert_eq!(status, StatusCode::OK, "create failed: {created}");
+    assert_eq!(created["location"], "Slaughter Pen");
+    assert_eq!(created["my_attending"], true);
+    assert_eq!(created["attendees"].as_array().unwrap().len(), 1);
+    assert_eq!(created["attendees"][0], "rider1");
+    let id = created["id"].as_str().unwrap().to_string();
+
+    // A second member joins; both names are visible to any member.
+    let (status, ride) = send(&app, req("POST", &format!("/rides/{id}/attend"), Some(&member2), Some(json!({ "going": true })))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(ride["my_attending"], true);
+    assert_eq!(ride["attendees"].as_array().unwrap().len(), 2);
+
+    // Re-joining is idempotent (still 2, not 3).
+    let (_, ride) = send(&app, req("POST", &format!("/rides/{id}/attend"), Some(&member2), Some(json!({ "going": true })))).await;
+    assert_eq!(ride["attendees"].as_array().unwrap().len(), 2);
+
+    // The list carries names and the caller's own status.
+    let (_, list) = send(&app, req("GET", "/rides", Some(&member2), None)).await;
+    let row = list.as_array().unwrap().iter().find(|r| r["id"] == id.as_str()).unwrap();
+    assert_eq!(row["my_attending"], true);
+    assert_eq!(row["attendees"].as_array().unwrap().len(), 2);
+    assert_eq!(row["created_by_name"], "rider1");
+
+    // Bailing drops the attendee and clears my_attending.
+    let (_, ride) = send(&app, req("POST", &format!("/rides/{id}/attend"), Some(&member2), Some(json!({ "going": false })))).await;
+    assert_eq!(ride["my_attending"], false);
+    assert_eq!(ride["attendees"].as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn ride_validation() {
+    if !emulator_available() { return; }
+    let app = test_app("ridevalid").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, _) = invite_and_register(&app, &root, "rv@test.com", "ridervalid", "member").await;
+
+    // Unknown location is rejected.
+    let (status, body) = send(&app, req("POST", "/rides", Some(&member), Some(json!({
+        "location": "Moab", "start_at": "2099-06-01T09:00", "end_at": "2099-06-01T11:00"
+    })))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap().contains("location"));
+
+    // Malformed datetimes are rejected.
+    let (status, _) = send(&app, req("POST", "/rides", Some(&member), Some(json!({
+        "location": "Coler", "start_at": "tomorrow", "end_at": "2099-06-01T11:00"
+    })))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // End must come after start.
+    let (status, body) = send(&app, req("POST", "/rides", Some(&member), Some(json!({
+        "location": "Coler", "start_at": "2099-06-01T11:00", "end_at": "2099-06-01T09:00"
+    })))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap().contains("end"));
+
+    // Every advertised location is accepted (guards the list against typos).
+    for loc in ["Bike Park", "Slaughter Pen", "Coler", "Blowing Springs", "Railyard", "Little Sugar", "Back 40", "Handcut Hollow"] {
+        let (status, body) = send(&app, req("POST", "/rides", Some(&member), Some(json!({
+            "location": loc, "start_at": "2099-06-01T09:00", "end_at": "2099-06-01T11:00"
+        })))).await;
+        assert_eq!(status, StatusCode::OK, "location {loc} rejected: {body}");
+    }
+}
+
+#[tokio::test]
+async fn ride_delete_permissions() {
+    if !emulator_available() { return; }
+    let app = test_app("ridedel").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (creator, _) = invite_and_register(&app, &root, "rc@test.com", "ridecreator", "member").await;
+    let (other, _) = invite_and_register(&app, &root, "ro@test.com", "rideother", "member").await;
+
+    let (_, created) = send(&app, req("POST", "/rides", Some(&creator), Some(json!({
+        "location": "Back 40", "start_at": "2099-06-01T09:00", "end_at": "2099-06-01T11:00"
+    })))).await;
+    let id = created["id"].as_str().unwrap().to_string();
+
+    // Another member can't delete it; the creator can.
+    let (status, _) = send(&app, req("DELETE", &format!("/rides/{id}"), Some(&other), None)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = send(&app, req("DELETE", &format!("/rides/{id}"), Some(&creator), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, list) = send(&app, req("GET", "/rides", Some(&creator), None)).await;
+    assert!(list.as_array().unwrap().iter().all(|r| r["id"] != id.as_str()));
+
+    // An admin can delete someone else's ride.
+    let (_, created) = send(&app, req("POST", "/rides", Some(&other), Some(json!({
+        "location": "Railyard", "start_at": "2099-06-01T09:00", "end_at": "2099-06-01T11:00"
+    })))).await;
+    let id2 = created["id"].as_str().unwrap().to_string();
+    let (status, _) = send(&app, req("DELETE", &format!("/rides/{id2}"), Some(&root), None)).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn profile_phone_and_mtb_pref_roundtrip() {
+    if !emulator_available() { return; }
+    let app = test_app("phone").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, member_id) = invite_and_register(&app, &root, "ph@test.com", "phoneuser", "member").await;
+
+    // Phone saves and reads back on the member's own profile.
+    let (status, updated) = send(&app, req("PUT", "/profile/me", Some(&member), Some(json!({
+        "phone": "479-555-0142", "is_public": true
+    })))).await;
+    assert_eq!(status, StatusCode::OK, "update failed: {updated}");
+    assert_eq!(updated["phone"], "479-555-0142");
+    let (_, me) = send(&app, req("GET", "/profile/me", Some(&member), None)).await;
+    assert_eq!(me["phone"], "479-555-0142");
+
+    // It's visible on the public member profile too.
+    let (_, public) = send(&app, req("GET", &format!("/members/{member_id}"), Some(&root), None)).await;
+    assert_eq!(public["phone"], "479-555-0142");
+
+    // Mountain bike pushes are opt-in: default off, and the setting persists.
+    let (_, prefs) = send(&app, req("GET", "/notifications/prefs", Some(&member), None)).await;
+    assert_eq!(prefs["mountain_bike"], false);
+    let (status, prefs) = send(&app, req("PUT", "/notifications/prefs", Some(&member), Some(json!({
+        "mountain_bike": true
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(prefs["mountain_bike"], true);
+    assert_eq!(prefs["movie_night"], true, "other prefs untouched");
+    let (_, prefs) = send(&app, req("GET", "/notifications/prefs", Some(&member), None)).await;
+    assert_eq!(prefs["mountain_bike"], true);
+}

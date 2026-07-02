@@ -193,6 +193,42 @@ test("a member can RSVP and admins see who's going", async ({ page }) => {
   await expect(hero2.locator(".rsvp-count")).toHaveText("0 going");
 });
 
+test("a member posts a ride, is auto-attending, and can bail and rejoin", async ({
+  page,
+}) => {
+  await login(page);
+  await page.goto("/rides");
+
+  // Post a ride: pick a trail and a time window.
+  await page.locator("select").selectOption("Coler");
+  await page.locator('input[type="datetime-local"]').nth(0).fill("2031-06-01T09:00");
+  await page.locator('input[type="datetime-local"]').nth(1).fill("2031-06-01T11:00");
+  await page.getByRole("button", { name: "Post Ride" }).click();
+  await expect(page.locator(".success")).toContainText("Ride posted");
+
+  // The ride card shows the trail, the poster, and — unlike movie nights —
+  // the attendee names are visible to members. The creator is auto-attending.
+  const card = page.locator(".thaw-card").filter({ hasText: "Posted by Root Babe" });
+  await expect(card).toBeVisible();
+  await expect(card.locator(".mn-title")).toHaveText("Coler");
+  await expect(card.locator(".rsvp-count")).toHaveText("1 rider");
+  await expect(card.locator(".rsvp-deadline")).toHaveText("Root Babe");
+  await expect(card.locator(".rsvp-btn")).toContainText("Going");
+
+  // Bailing drops them off the list; rejoining puts them back.
+  await card.locator(".rsvp-btn").click();
+  await expect(card.locator(".rsvp-count")).toHaveText("0 riders");
+  await expect(card.locator(".rsvp-btn")).toContainText("Join this ride");
+  await card.locator(".rsvp-btn").click();
+  await expect(card.locator(".rsvp-count")).toHaveText("1 rider");
+
+  // The creator can delete their ride.
+  await card.getByRole("button", { name: "Delete" }).click();
+  await expect(
+    page.locator(".thaw-card").filter({ hasText: "Posted by Root Babe" }),
+  ).toHaveCount(0);
+});
+
 test("movie nights offers a calendar subscription link", async ({ page }) => {
   await login(page);
   await page.goto("/movie-nights");
@@ -308,8 +344,9 @@ test("profile exposes notification settings", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Notifications" }),
   ).toBeVisible();
-  // is_public switch + four channel switches (announcements/general/movie/chat).
-  await expect(page.getByRole("switch")).toHaveCount(5);
+  // is_public switch + five channel switches
+  // (announcements/general/movie/chat/mountain-bike).
+  await expect(page.getByRole("switch")).toHaveCount(6);
   await expect(
     page.getByRole("button", { name: "Save Notification Settings" }),
   ).toBeVisible();

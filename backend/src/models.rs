@@ -60,6 +60,31 @@ pub struct RsvpDoc {
     pub created_at: i64,
 }
 
+/// A member's posted mountain bike ride. Times are naive local datetimes
+/// ("YYYY-MM-DDTHH:MM") — see `shared::Ride`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RideDoc {
+    pub id: String,
+    pub location: String,
+    pub start_at: String,
+    pub end_at: String,
+    pub created_by: String,
+    /// Denormalized creator label, resolved at post time like chat authors.
+    pub created_by_name: String,
+    pub created_at: i64,
+}
+
+/// One member going on a ride. Doc id is `{ride_id}_{user_id}` so joining is an
+/// idempotent upsert and leaving deletes it — same shape as `RsvpDoc`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RideAttendeeDoc {
+    pub id: String,
+    pub ride_id: String,
+    pub user_id: String,
+    pub author: String,
+    pub created_at: i64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnnouncementDoc {
     pub id: String,
@@ -91,6 +116,9 @@ pub struct NotifPrefsDoc {
     /// before it existed — and new members — are not pushed every chat message.
     #[serde(default)]
     pub chat: bool,
+    /// Opt-in like chat: only members who ride should get ride pushes.
+    #[serde(default)]
+    pub mountain_bike: bool,
     /// Per-user inbox watermark: the feed hides notifications created at or
     /// before this unix-seconds time. "Clear" sets it to now. 0 = never cleared.
     #[serde(default)]
@@ -143,6 +171,8 @@ pub struct ProfileDoc {
     pub avatar_url: Option<String>,
     #[serde(default)]
     pub email: Option<String>,
+    #[serde(default)]
+    pub phone: Option<String>,
     #[serde(default)]
     pub links: Vec<ProfileLink>,
     pub is_public: bool,

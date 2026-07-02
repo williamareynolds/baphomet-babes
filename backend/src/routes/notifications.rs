@@ -5,7 +5,7 @@
 //! FCM is configured, pushed to subscribed devices. Pushing is best-effort and
 //! happens in the background so it never blocks or fails the originating action.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::{
     AppState,
@@ -65,6 +65,7 @@ fn channel_default(channel: &str) -> bool {
         shared::CHANNEL_GENERAL => d.general,
         shared::CHANNEL_MOVIE_NIGHT => d.movie_night,
         shared::CHANNEL_CHAT => d.chat,
+        shared::CHANNEL_MOUNTAIN_BIKE => d.mountain_bike,
         _ => false,
     }
 }
@@ -75,6 +76,7 @@ fn prefs_for(channel: &str, p: &NotifPrefsDoc) -> bool {
         shared::CHANNEL_GENERAL => p.general,
         shared::CHANNEL_MOVIE_NIGHT => p.movie_night,
         shared::CHANNEL_CHAT => p.chat,
+        shared::CHANNEL_MOUNTAIN_BIKE => p.mountain_bike,
         _ => false,
     }
 }
@@ -194,6 +196,7 @@ async fn load_prefs(state: &AppState, user_id: &str) -> anyhow::Result<NotifPref
         general: true,
         movie_night: true,
         chat: false,
+        mountain_bike: false,
         cleared_at: 0,
     }))
 }
@@ -209,6 +212,7 @@ async fn get_prefs(
         general: p.general,
         movie_night: p.movie_night,
         chat: p.chat,
+        mountain_bike: p.mountain_bike,
     }))
 }
 
@@ -226,6 +230,7 @@ async fn update_prefs(
         general: req.general.unwrap_or(existing.general),
         movie_night: req.movie_night.unwrap_or(existing.movie_night),
         chat: req.chat.unwrap_or(existing.chat),
+        mountain_bike: req.mountain_bike.unwrap_or(existing.mountain_bike),
         cleared_at: existing.cleared_at,
     };
 
@@ -244,6 +249,7 @@ async fn update_prefs(
         general: updated.general,
         movie_night: updated.movie_night,
         chat: updated.chat,
+        mountain_bike: updated.mountain_bike,
     }))
 }
 
@@ -334,6 +340,82 @@ pub fn push_only(
             tracing::warn!("push fanout failed: {e:#}");
         }
     });
+}
+
+/// Push directly to specific members' devices, bypassing channel preferences —
+/// for attendee-scoped updates (someone who joined a ride implicitly opted into
+/// hearing about it). Not persisted to the inbox: the shared feed has no
+/// per-user targeting, so persisting would show it to everyone. Best-effort
+/// and backgrounded, like the channel fanout.
+pub fn push_to_users(
+    state: &AppState,
+    user_ids: Vec<String>,
+    title: &str,
+    body: &str,
+    url: Option<&str>,
+) {
+    if state.fcm.is_none() || user_ids.is_empty() {
+        return;
+    }
+    let state = state.clone();
+    let title = title.to_string();
+    let body = body.to_string();
+    let url = url.map(|s| s.to_string());
+    tokio::spawn(async move {
+        if let Err(e) = fanout_users(&state, &user_ids, &title, &body, url.as_deref()).await {
+            tracing::warn!("targeted push failed: {e:#}");
+        }
+    });
+}
+
+/// Send to every device belonging to one of `user_ids`, pruning dead tokens.
+async fn fanout_users(
+    state: &AppState,
+    user_ids: &[String],
+    title: &str,
+    body: &str,
+    url: Option<&str>,
+) -> anyhow::Result<()> {
+    let Some(fcm) = &state.fcm else { return Ok(()) };
+
+    let targets: HashSet<&str> = user_ids.iter().map(|s| s.as_str()).collect();
+    let tokens: Vec<PushTokenDoc> = state.db
+        .fluent()
+        .select()
+        .from(PUSH_TOKENS)
+        .obj()
+        .query()
+        .await
+        .context("failed to load push tokens")?;
+
+    let (mut sent, mut stale, mut failed) = (0usize, 0usize, 0usize);
+    for t in tokens {
+        if !targets.contains(t.user_id.as_str()) {
+            continue;
+        }
+        match fcm.send(&t.token, title, body, url).await {
+            Ok(SendOutcome::Sent) => sent += 1,
+            Ok(SendOutcome::Stale) => {
+                stale += 1;
+                let _ = state.db
+                    .fluent()
+                    .delete()
+                    .from(PUSH_TOKENS)
+                    .document_id(&t.token)
+                    .execute()
+                    .await;
+            }
+            Err(e) => {
+                failed += 1;
+                tracing::warn!("FCM send error: {e:#}");
+            }
+        }
+    }
+    tracing::info!(
+        "targeted push users={} sent={sent} stale={stale} failed={failed}",
+        user_ids.len()
+    );
+    Ok(())
 }
 
 /// Send `channel`'s notification to every subscribed device, pruning any token

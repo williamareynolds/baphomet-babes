@@ -106,6 +106,7 @@ pub fn build_app(state: AppState, allowed_origins: Option<&str>, rate_limit: Rat
         .nest("/events", routes::events::router())
         .nest("/invites", routes::invites::router())
         .nest("/profile", routes::profile::profile_router())
+        .nest("/rides", routes::rides::router())
         .nest("/members", routes::profile::members_router())
         .nest("/users", routes::users::router())
         .nest("/notifications", routes::notifications::router())

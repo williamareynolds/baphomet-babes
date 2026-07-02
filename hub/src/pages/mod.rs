@@ -12,4 +12,5 @@ pub mod members;
 pub mod movie_nights;
 pub mod notifications;
 pub mod profile;
+pub mod rides;
 pub mod vote;

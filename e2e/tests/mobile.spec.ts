@@ -90,6 +90,13 @@ test("movie nights page fits the iPhone viewport", async ({ page }) => {
   await expectNoOverflow(page);
 });
 
+test("rides page fits the iPhone viewport", async ({ page }) => {
+  await login(page);
+  await page.goto("/rides");
+  await expect(page.getByRole("heading", { name: "Mountain Bike Rides" })).toBeVisible();
+  await expectNoOverflow(page);
+});
+
 test("admin users page fits the iPhone viewport", async ({ page }) => {
   await login(page);
   await page.goto("/admin/users");

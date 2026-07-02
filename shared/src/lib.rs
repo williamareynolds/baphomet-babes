@@ -124,6 +124,49 @@ pub struct Rsvp {
     pub created_at: i64,
 }
 
+// Mountain bike rides
+//
+// Any member can post that they're heading out to ride; others tap "join".
+// Times are naive local datetimes ("YYYY-MM-DDTHH:MM") — every trail is in
+// Bentonville, so everyone shares a wall clock and lexicographic order is
+// chronological order.
+pub const RIDE_LOCATIONS: &[&str] = &[
+    "Bike Park",
+    "Slaughter Pen",
+    "Coler",
+    "Blowing Springs",
+    "Railyard",
+    "Little Sugar",
+    "Back 40",
+    "Handcut Hollow",
+];
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Ride {
+    pub id: String,
+    pub location: String,
+    pub start_at: String, // "YYYY-MM-DDTHH:MM"
+    pub end_at: String,   // "YYYY-MM-DDTHH:MM"
+    pub created_by: String,
+    pub created_by_name: String,
+    pub created_at: i64,
+    /// Display names of everyone going (creator included), in join order.
+    /// Unlike movie-night RSVPs these are visible to all members — knowing who
+    /// you're riding with is the point.
+    #[serde(default)]
+    pub attendees: Vec<String>,
+    /// Whether the requesting member is going. Computed per request.
+    #[serde(default)]
+    pub my_attending: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateRideRequest {
+    pub location: String,
+    pub start_at: String,
+    pub end_at: String,
+}
+
 // Announcements
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Announcement {
@@ -170,6 +213,8 @@ pub struct Profile {
     #[serde(default)]
     pub email: Option<String>,
     #[serde(default)]
+    pub phone: Option<String>,
+    #[serde(default)]
     pub links: Vec<ProfileLink>,
     pub is_public: bool,
     pub updated_at: i64,
@@ -182,6 +227,7 @@ pub struct UpdateProfileRequest {
     pub pronouns: Option<String>,
     pub avatar_url: Option<String>,
     pub email: Option<String>,
+    pub phone: Option<String>,
     pub links: Option<Vec<ProfileLink>>,
     pub is_public: Option<bool>,
 }
@@ -244,6 +290,7 @@ pub const CHANNEL_ANNOUNCEMENTS: &str = "announcements";
 pub const CHANNEL_GENERAL: &str = "general";
 pub const CHANNEL_MOVIE_NIGHT: &str = "movie_night";
 pub const CHANNEL_CHAT: &str = "chat";
+pub const CHANNEL_MOUNTAIN_BIKE: &str = "mountain_bike";
 
 /// A delivered notification, as shown in the inbox.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -264,13 +311,22 @@ pub struct NotificationPrefs {
     pub general: bool,
     pub movie_night: bool,
     pub chat: bool,
+    #[serde(default)]
+    pub mountain_bike: bool,
 }
 
 impl Default for NotificationPrefs {
     fn default() -> Self {
         // Chat is opt-in (off by default) — it's the highest-volume channel, so
         // members shouldn't get pushed every message until they choose to.
-        NotificationPrefs { announcements: true, general: true, movie_night: true, chat: false }
+        // Mountain bike is opt-in too: not everyone rides.
+        NotificationPrefs {
+            announcements: true,
+            general: true,
+            movie_night: true,
+            chat: false,
+            mountain_bike: false,
+        }
     }
 }
 
@@ -280,6 +336,7 @@ pub struct UpdateNotificationPrefs {
     pub general: Option<bool>,
     pub movie_night: Option<bool>,
     pub chat: Option<bool>,
+    pub mountain_bike: Option<bool>,
 }
 
 /// Register (or refresh) an FCM device token for the current user.
