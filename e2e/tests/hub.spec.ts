@@ -402,6 +402,12 @@ test("profile exposes notification settings", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: "Save Notification Settings" }),
   ).toBeVisible();
+  // Headless Chromium hard-denies the Notification API, which doubles as
+  // coverage for the blocked-state recovery guidance (shown instead of a
+  // dead Enable Push button).
+  await expect(page.locator(".push-blocked")).toContainText(
+    "remove the app from your Home Screen",
+  );
 });
 
 test("an admin announcement lands in the notifications inbox", async ({

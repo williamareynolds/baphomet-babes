@@ -1,6 +1,7 @@
 use crate::api;
 use auth_client::{AuthUser, enable_push, notif_permission};
 use leptos::prelude::*;
+use leptos_router::components::A;
 use shared::{Profile, ProfileLink, UpdateNotificationPrefs, UpdateProfileRequest};
 use thaw::{Button, ButtonAppearance, ButtonType, Card, Field, Input, InputType, Switch, Textarea};
 
@@ -239,24 +240,43 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                 <div class="settings-card">
                 <Card>
                     <h2 id="notifications">"Notifications"</h2>
-                    <Show
-                        when=move || perm.get() == "granted"
-                        fallback=move || view! {
+                    {move || match perm.get().as_str() {
+                        "granted" => view! {
+                            <p style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#93d8b4;margin-bottom:0.75rem;">
+                                "Push enabled on this device."
+                            </p>
+                            <Button appearance=ButtonAppearance::Secondary on_click=on_test_push>
+                                "Send Test Notification"
+                            </Button>
+                        }.into_any(),
+                        "default" => view! {
                             <p style="color:#bdafb2;margin-bottom:0.75rem;">
                                 "Turn on push notifications for this device."
                             </p>
                             <Button appearance=ButtonAppearance::Primary on_click=on_enable_push>
                                 "Enable Push"
                             </Button>
-                        }
-                    >
-                        <p style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#93d8b4;margin-bottom:0.75rem;">
-                            "Push enabled on this device."
-                        </p>
-                        <Button appearance=ButtonAppearance::Secondary on_click=on_test_push>
-                            "Send Test Notification"
-                        </Button>
-                    </Show>
+                        }.into_any(),
+                        "denied" => view! {
+                            <p class="push-blocked">
+                                "Notifications are blocked for this app on this device. "
+                                "On iPhone: remove the app from your Home Screen, add it "
+                                "back (Share → Add to Home Screen), then tap Enable Push "
+                                "here. In a desktop browser: allow notifications for this "
+                                "site in the browser's settings, then reload."
+                            </p>
+                        }.into_any(),
+                        // "unsupported": no Notification API — plain iPhone Safari
+                        // tab. Push needs the installed (Home Screen) app.
+                        _ => view! {
+                            <p class="push-blocked">
+                                "Push isn't available in this browser. On iPhone, add the "
+                                "app to your Home Screen first — see the "
+                                <A href="/install" attr:style="color:#bda4e6;">"install guide"</A>
+                                ", then enable push from this page inside the installed app."
+                            </p>
+                        }.into_any(),
+                    }}
 
                     <p style="font-family:'IBM Plex Mono',monospace;font-size:0.6rem;letter-spacing:0.1em;text-transform:uppercase;color:#ad9ea4;margin:1.25rem 0 0.5rem;">
                         "Channels"
