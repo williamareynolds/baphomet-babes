@@ -255,8 +255,11 @@ test("the rides page notification toggle syncs with profile settings", async ({
   await toggle.check();
   await saved;
   await page.goto("/profile");
-  // Mountain Bike Rides is the last of the six switches on the profile page.
-  await expect(page.getByRole("switch").last()).toBeChecked();
+  const mtb = page
+    .locator(".thaw-switch")
+    .filter({ hasText: "Mountain Bike Rides" })
+    .getByRole("switch");
+  await expect(mtb).toBeChecked();
 
   // Turn it back off from the rides page so the channel ends where it started.
   await page.goto("/rides");
@@ -267,7 +270,12 @@ test("the rides page notification toggle syncs with profile settings", async ({
   await toggle.uncheck();
   await savedOff;
   await page.goto("/profile");
-  await expect(page.getByRole("switch").last()).not.toBeChecked();
+  await expect(
+    page
+      .locator(".thaw-switch")
+      .filter({ hasText: "Mountain Bike Rides" })
+      .getByRole("switch"),
+  ).not.toBeChecked();
 });
 
 test("movie nights offers a calendar subscription link", async ({ page }) => {
@@ -385,9 +393,12 @@ test("profile exposes notification settings", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Notifications" }),
   ).toBeVisible();
-  // is_public switch + five channel switches
-  // (announcements/general/movie/chat/mountain-bike).
-  await expect(page.getByRole("switch")).toHaveCount(6);
+  // is_public switch + five channel switches + the admin-only test channel
+  // (root is a superadmin).
+  await expect(page.getByRole("switch")).toHaveCount(7);
+  await expect(
+    page.locator(".thaw-switch").filter({ hasText: "Test Messages (admins only)" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Save Notification Settings" }),
   ).toBeVisible();
@@ -500,4 +511,101 @@ test("clearing the inbox empties it", async ({ page }) => {
   await page.getByRole("button", { name: "Clear" }).click();
   await expect(page.getByText("No notifications yet.")).toBeVisible();
   await expect(page.locator(".thaw-card")).toHaveCount(0);
+});
+
+test("exactly one service worker owns the root scope", async ({ page }) => {
+  // Regression guard for the push outage: a second worker registered at "/"
+  // (the old firebase-messaging-sw.js) replaces the shell worker and swallows
+  // every push event. There must be exactly one registration, and it must be
+  // the combined sw.js.
+  await login(page);
+  const regs = await page.evaluate(async () => {
+    await navigator.serviceWorker.ready; // registration happens on window load
+    const rs = await navigator.serviceWorker.getRegistrations();
+    return rs.map((r) => ({
+      scope: r.scope,
+      script: (r.active ?? r.installing ?? r.waiting)?.scriptURL ?? "",
+    }));
+  });
+  expect(regs).toHaveLength(1);
+  expect(regs[0].scope).toBe("http://localhost:3001/");
+  expect(regs[0].script).toBe("http://localhost:3001/sw.js");
+});
+
+test("members can send themselves a test notification", async ({ page }) => {
+  // With permission granted the profile offers a self-serve test push. In dev
+  // push isn't configured, so no device is enrolled — the button must say so
+  // instead of pretending it worked. Headless Chromium hard-denies the
+  // Notification API (grantPermissions has no effect), so stub the permission
+  // the app reads.
+  await page.addInitScript(() => {
+    Object.defineProperty(Notification, "permission", { get: () => "granted" });
+  });
+  await login(page);
+  await page.goto("/profile");
+  await page.getByRole("button", { name: "Send Test Notification" }).click();
+  await expect(page.locator(".success")).toContainText("No devices enrolled");
+});
+
+test("test broadcasts stay out of the inbox", async ({ page }) => {
+  await login(page);
+  await page.goto("/admin/broadcast");
+  await page.getByPlaceholder("Short headline").fill("Pipeline probe");
+  await page
+    .getByPlaceholder("What do you want people to know?")
+    .fill("Admins only.");
+  await page
+    .locator(".thaw-switch")
+    .filter({ hasText: "Send to Test channel" })
+    .getByRole("switch")
+    .check();
+  await page.getByRole("button", { name: "Send Broadcast" }).click();
+  await expect(page.locator(".success")).toContainText(
+    "only admins receive it",
+  );
+
+  await page.goto("/notifications");
+  await expect(
+    page.locator(".thaw-card").filter({ hasText: "Pipeline probe" }),
+  ).toHaveCount(0);
+});
+
+test("members see no admin-only test channel controls", async ({ page }) => {
+  // Mint a member invite as root…
+  await login(page);
+  await page.goto("/admin/invites");
+  await page.getByPlaceholder("First name").fill("Pugsley");
+  await page.getByRole("button", { name: "Generate" }).click();
+  await expect(page.locator(".success")).toContainText("created and copied");
+  const card = page.locator(".thaw-card").filter({ hasText: "Pugsley" });
+  const code = ((await card.locator("code").first().textContent()) ?? "").trim();
+  expect(code).not.toEqual("");
+
+  // …and onboard the member.
+  await page.evaluate(() => localStorage.clear());
+  await page.goto(`/login?code=${encodeURIComponent(code)}`);
+  const stamp = Date.now();
+  await page.fill("#reg-email", `pugsley-${stamp}@e2e.test`);
+  await page.fill("#reg-username", `pugsley${stamp}`);
+  await page.fill("#reg-password", "member-pw-123");
+  await page.click('form button[type="submit"]');
+  await expect(page.getByRole("button", { name: "Logout" })).toBeVisible();
+
+  // Their profile has the six regular switches, no test channel.
+  await page.goto("/profile");
+  await expect(
+    page.getByRole("heading", { name: "Notifications" }),
+  ).toBeVisible();
+  await expect(page.getByRole("switch")).toHaveCount(6);
+  await expect(
+    page.locator(".thaw-switch").filter({ hasText: "Test Messages (admins only)" }),
+  ).toHaveCount(0);
+
+  // And the broadcast tool is off-limits entirely.
+  await page.goto("/admin/broadcast");
+  await expect(page.locator(".error")).toContainText("Access denied");
+
+  // Leave the session as root for any tests that follow.
+  await page.evaluate(() => localStorage.clear());
+  await login(page);
 });

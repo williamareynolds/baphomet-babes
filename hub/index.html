@@ -14,11 +14,11 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <link rel="manifest" href="/public/manifest.json" />
     <link data-trunk rel="copy-dir" href="public"/>
-    <!-- Also place the service worker at the site root so its scope is "/". -->
+    <!-- Place the service worker at the site root so its scope is "/". It is
+         the ONLY worker on the site: offline shell + FCM push in one file.
+         Registering a second worker at "/" replaces this one and pushes stop
+         being displayed (see the header comment in sw.js). -->
     <link data-trunk rel="copy-file" href="public/sw.js"/>
-    <!-- FCM background worker must also live at the root (getToken registers
-         "/firebase-messaging-sw.js"). -->
-    <link data-trunk rel="copy-file" href="public/firebase-messaging-sw.js"/>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
@@ -765,6 +765,11 @@
       // Returns the FCM token on success, or an "ERR:<reason>" string on failure
       // so the UI can show why (especially useful on iOS).
       window.__enablePush = async () => "ERR:push isn't configured here (dev build)";
+      // Silent variant: refresh the FCM token WITHOUT prompting. Returns null
+      // unless permission is already granted and a token can be minted. Called
+      // on every app load so subscriptions heal themselves (token rotation,
+      // iOS revoking subscriptions, the SW consolidation) with no user action.
+      window.__refreshPush = async () => null;
 
       if (location.hostname.endsWith("baphometbabes.com")) {
         try {
@@ -812,10 +817,14 @@
               "https://www.gstatic.com/firebasejs/11.1.0/firebase-messaging.js"
             );
             const messaging = getMessaging(app);
-            // Dedicated SW for background push (separate from our offline sw.js).
-            const swReg = await navigator.serviceWorker.register(
-              "/firebase-messaging-sw.js"
-            );
+            // Push rides on the SAME root registration as the offline shell —
+            // one worker, one scope, no clobbering (register is idempotent).
+            const swReg = await navigator.serviceWorker.register("/sw.js");
+            const mintToken = () =>
+              getMessagingToken(messaging, {
+                vapidKey: FCM_VAPID_KEY,
+                serviceWorkerRegistration: swReg,
+              });
             window.__enablePush = async () => {
               try {
                 if (typeof Notification === "undefined") {
@@ -823,14 +832,23 @@
                 }
                 const perm = await Notification.requestPermission();
                 if (perm !== "granted") return "ERR:permission " + perm;
-                const tok = await getMessagingToken(messaging, {
-                  vapidKey: FCM_VAPID_KEY,
-                  serviceWorkerRegistration: swReg,
-                });
+                const tok = await mintToken();
                 return tok || "ERR:no token returned";
               } catch (e) {
                 console.error("enablePush failed:", e);
                 return "ERR:" + (e && e.message ? e.message : String(e));
+              }
+            };
+            window.__refreshPush = async () => {
+              try {
+                if (typeof Notification === "undefined") return null;
+                if (Notification.permission !== "granted") return null;
+                // getToken never prompts when permission is granted; it returns
+                // the current token or re-subscribes if the browser dropped it.
+                return (await mintToken()) || null;
+              } catch (e) {
+                console.error("refreshPush failed:", e);
+                return null;
               }
             };
           } catch (e) {

@@ -53,7 +53,9 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let ch_movie = RwSignal::new(true);
     let ch_chat = RwSignal::new(false); // chat is opt-in
     let ch_mtb = RwSignal::new(false); // mountain bike is opt-in
+    let ch_test = RwSignal::new(true); // admin-only test channel
     let notif_msg = RwSignal::new(String::new());
+    let is_admin = move || auth.get().map(|u| u.is_admin()).unwrap_or(false);
 
     Effect::new(move |_| {
         if let Some(user) = auth.get() {
@@ -65,6 +67,7 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                     ch_movie.set(p.movie_night);
                     ch_chat.set(p.chat);
                     ch_mtb.set(p.mountain_bike);
+                    ch_test.set(p.test);
                 }
             });
         }
@@ -86,6 +89,27 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
         });
     };
 
+    let on_test_push = move |_| {
+        let Some(user) = auth.get() else { return };
+        notif_msg.set(String::new());
+        wasm_bindgen_futures::spawn_local(async move {
+            match api::send_test_push(&user.token).await {
+                Ok(r) => {
+                    let msg = match (r.devices, r.sent) {
+                        (0, _) => "No devices enrolled — tap Enable Push first.".to_string(),
+                        (d, s) if s == d => format!("Test sent to {s} of {d} device(s) — check for the notification."),
+                        (d, s) => format!(
+                            "Test sent to {s} of {d} device(s). {}",
+                            r.detail.unwrap_or_default()
+                        ),
+                    };
+                    notif_msg.set(msg);
+                }
+                Err(e) => notif_msg.set(format!("Test failed: {e}")),
+            }
+        });
+    };
+
     let save_prefs = move |_| {
         let Some(user) = auth.get() else { return };
         notif_msg.set(String::new());
@@ -95,6 +119,7 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
             movie_night: Some(ch_movie.get()),
             chat: Some(ch_chat.get()),
             mountain_bike: Some(ch_mtb.get()),
+            test: Some(ch_test.get()),
         };
         wasm_bindgen_futures::spawn_local(async move {
             match api::update_notif_prefs(req, &user.token).await {
@@ -228,6 +253,9 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                         <p style="font-family:'IBM Plex Mono',monospace;font-size:0.7rem;color:#93d8b4;margin-bottom:0.75rem;">
                             "Push enabled on this device."
                         </p>
+                        <Button appearance=ButtonAppearance::Secondary on_click=on_test_push>
+                            "Send Test Notification"
+                        </Button>
                     </Show>
 
                     <p style="font-family:'IBM Plex Mono',monospace;font-size:0.6rem;letter-spacing:0.1em;text-transform:uppercase;color:#ad9ea4;margin:1.25rem 0 0.5rem;">
@@ -239,6 +267,9 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                         <Switch checked=ch_movie label="Movie Nights" />
                         <Switch checked=ch_chat label="Group Chat" />
                         <Switch checked=ch_mtb label="Mountain Bike Rides" />
+                        <Show when=is_admin>
+                            <Switch checked=ch_test label="Test Messages (admins only)" />
+                        </Show>
                     </div>
 
                     <Show when=move || !notif_msg.get().is_empty()>

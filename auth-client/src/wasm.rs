@@ -18,6 +18,11 @@ extern "C" {
     #[wasm_bindgen(js_namespace = window, js_name = __enablePush, catch)]
     async fn js_enable_push() -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsValue>;
 
+    // Silent token refresh: like __enablePush but never prompts. Resolves to
+    // the current FCM token when permission is already granted, else null.
+    #[wasm_bindgen(js_namespace = window, js_name = __refreshPush, catch)]
+    async fn js_refresh_push() -> Result<wasm_bindgen::JsValue, wasm_bindgen::JsValue>;
+
     // Current Notification permission: "granted" | "denied" | "default" |
     // "unsupported". Synchronous.
     #[wasm_bindgen(js_namespace = window, js_name = __notifPermission, catch)]
@@ -49,6 +54,14 @@ pub async fn enable_push() -> Result<String, String> {
         }
         Err(_) => Err("push bridge unavailable".to_string()),
     }
+}
+
+/// Refresh this device's FCM token without prompting. `None` when permission
+/// isn't granted, push is unconfigured (dev), or minting fails. Run on app
+/// load so device subscriptions self-heal (token rotation, iOS dropping the
+/// subscription, service-worker changes).
+pub async fn refresh_push() -> Option<String> {
+    js_refresh_push().await.ok().and_then(|v| v.as_string())
 }
 
 /// Current notification permission state: "granted" | "denied" | "default" |

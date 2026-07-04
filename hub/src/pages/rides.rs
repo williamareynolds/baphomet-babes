@@ -206,13 +206,7 @@ pub fn RidesPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
         let Some(user) = auth.get_untracked() else { return };
         notif_saved.set(Some(want));
         spawn_local(async move {
-            let req = UpdateNotificationPrefs {
-                announcements: None,
-                general: None,
-                movie_night: None,
-                chat: None,
-                mountain_bike: Some(want),
-            };
+            let req = UpdateNotificationPrefs { mountain_bike: Some(want), ..Default::default() };
             let _ = api::update_notif_prefs(req, &user.token).await;
         });
     });

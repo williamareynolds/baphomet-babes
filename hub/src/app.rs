@@ -1,4 +1,4 @@
-use auth_client::{AuthUser, load_auth};
+use auth_client::{AuthUser, load_auth, refresh_push};
 use crate::{
     components::{nav::Nav, notify_onboard::NotifyOnboard},
     pages::{
@@ -54,6 +54,21 @@ pub fn App() -> impl IntoView {
     // tokens as CSS variables onto its wrapper, which every Thaw component
     // (and our own nav CSS) reads. See crate::theme.
     let theme: RwSignal<Theme> = RwSignal::new(gothic_theme());
+
+    // Self-healing push: on every load where permission is already granted,
+    // silently re-mint the FCM token and re-register it with the backend.
+    // Catches token rotation, iOS quietly dropping subscriptions, and tokens
+    // the backend pruned — without asking the member to touch anything.
+    Effect::new(move |_| {
+        let Some(user) = auth.get() else { return };
+        wasm_bindgen_futures::spawn_local(async move {
+            if let Some(tok) = refresh_push().await {
+                if crate::api::register_push_token(&tok, &user.token).await.is_ok() {
+                    crate::push::save(&tok);
+                }
+            }
+        });
+    });
 
     view! {
         <ConfigProvider theme class="app-shell">

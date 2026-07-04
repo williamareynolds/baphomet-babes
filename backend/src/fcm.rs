@@ -28,6 +28,11 @@ pub struct Fcm(Arc<Inner>);
 
 struct Inner {
     project_id: String,
+    /// Base URL of the FCM API. The real `https://fcm.googleapis.com` in
+    /// production; tests point this at a local mock server.
+    endpoint_base: String,
+    /// Fixed bearer token for tests, where no metadata server exists.
+    static_token: Option<String>,
     http: reqwest::Client,
     token: RwLock<Option<CachedToken>>,
 }
@@ -48,6 +53,24 @@ impl Fcm {
     pub fn new(project_id: impl Into<String>) -> Self {
         Fcm(Arc::new(Inner {
             project_id: project_id.into(),
+            endpoint_base: "https://fcm.googleapis.com".into(),
+            static_token: None,
+            http: reqwest::Client::new(),
+            token: RwLock::new(None),
+        }))
+    }
+
+    /// Test constructor: send to a mock FCM server with a fixed bearer token
+    /// instead of the real API + metadata-server OAuth.
+    pub fn with_endpoint(
+        project_id: impl Into<String>,
+        endpoint_base: impl Into<String>,
+        static_token: impl Into<String>,
+    ) -> Self {
+        Fcm(Arc::new(Inner {
+            project_id: project_id.into(),
+            endpoint_base: endpoint_base.into(),
+            static_token: Some(static_token.into()),
             http: reqwest::Client::new(),
             token: RwLock::new(None),
         }))
@@ -56,6 +79,9 @@ impl Fcm {
     /// A valid OAuth access token for the messaging API, cached until shortly
     /// before it expires.
     async fn access_token(&self) -> anyhow::Result<String> {
+        if let Some(t) = &self.0.static_token {
+            return Ok(t.clone());
+        }
         if let Some(c) = self.0.token.read().await.as_ref() {
             if c.expires_at > Instant::now() {
                 return Ok(c.value.clone());
@@ -92,8 +118,8 @@ impl Fcm {
     ) -> anyhow::Result<SendOutcome> {
         let token = self.access_token().await?;
         let endpoint = format!(
-            "https://fcm.googleapis.com/v1/projects/{}/messages:send",
-            self.0.project_id
+            "{}/v1/projects/{}/messages:send",
+            self.0.endpoint_base, self.0.project_id
         );
 
         let mut data = serde_json::Map::new();

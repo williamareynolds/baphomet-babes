@@ -2,8 +2,8 @@ use auth_client::AuthUser;
 use crate::api;
 use crate::components::admin_nav::AdminNav;
 use leptos::prelude::*;
-use shared::BroadcastRequest;
-use thaw::{Button, ButtonAppearance, ButtonType, Card, Field, Input, Textarea};
+use shared::{BroadcastRequest, CHANNEL_TEST};
+use thaw::{Button, ButtonAppearance, ButtonType, Card, Field, Input, Switch, Textarea};
 
 /// Send a one-off push + inbox notification to the General channel. Unlike
 /// announcements, a broadcast leaves no stored post — just the notification.
@@ -14,6 +14,7 @@ pub fn AdminBroadcastPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
 
     let title = RwSignal::new(String::new());
     let body = RwSignal::new(String::new());
+    let test_channel = RwSignal::new(false);
     let (error, set_error) = signal(String::new());
     let (success, set_success) = signal(String::new());
     let sending = RwSignal::new(false);
@@ -24,11 +25,20 @@ pub fn AdminBroadcastPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
         set_success.set(String::new());
         let Some(user) = auth.get() else { return };
         sending.set(true);
-        let req = BroadcastRequest { title: title.get(), body: body.get() };
+        let to_test = test_channel.get();
+        let req = BroadcastRequest {
+            title: title.get(),
+            body: body.get(),
+            channel: to_test.then(|| CHANNEL_TEST.to_string()),
+        };
         wasm_bindgen_futures::spawn_local(async move {
             match api::broadcast(req, &user.token).await {
                 Ok(()) => {
-                    set_success.set("Broadcast sent to the General channel.".into());
+                    set_success.set(if to_test {
+                        "Test broadcast sent — only admins receive it.".into()
+                    } else {
+                        "Broadcast sent to the General channel.".into()
+                    });
                     title.set(String::new());
                     body.set(String::new());
                     sending.set(false);
@@ -60,6 +70,9 @@ pub fn AdminBroadcastPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                         <Field label="Message">
                             <Textarea value=body placeholder="What do you want people to know?" />
                         </Field>
+                        <div style="margin:0.5rem 0 0.75rem;">
+                            <Switch checked=test_channel label="Send to Test channel (only admins receive it, skips inboxes)" />
+                        </div>
                         <Show when=move || !error.get().is_empty()>
                             <p class="error">{move || error.get()}</p>
                         </Show>

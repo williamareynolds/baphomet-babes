@@ -1,4 +1,11 @@
-// Service worker: offline app shell + asset caching.
+// Service worker: offline app shell + asset caching + FCM background push.
+//
+// This MUST be the only service worker on the site. A push subscription is
+// bound to a scope's registration, and only that scope's active worker gets
+// `push` events — a second worker registered at "/" would replace this one
+// and silently swallow every notification (which is exactly the outage we
+// had when the offline shell and the FCM worker were separate files fighting
+// over the root scope).
 //
 // Strategy:
 //   - navigations  -> network-first, fall back to the cached shell offline (so
@@ -7,6 +14,45 @@
 //     immutable, so this is safe and fast).
 //   - API calls    -> not handled here (cross-origin Cloud Run goes to network).
 //   - version.json -> never cached; it drives the in-app update check.
+//   - push         -> Firebase compat SDK auto-displays "notification" payloads
+//     when the app is backgrounded; we add click handling on top.
+//
+// Uses the compat SDK because service workers can't reliably import ES modules.
+// importScripts sources are cached with the worker, so this works offline too.
+
+importScripts(
+  "https://www.gstatic.com/firebasejs/11.1.0/firebase-app-compat.js",
+);
+importScripts(
+  "https://www.gstatic.com/firebasejs/11.1.0/firebase-messaging-compat.js",
+);
+
+firebase.initializeApp({
+  apiKey: "AIzaSyCvALBMnTPVeeips_paWMxFW4N0-wEfBOo",
+  projectId: "baphomet-babes",
+  messagingSenderId: "780823612423",
+  appId: "1:780823612423:web:ad385cf10a5b4d7f076ea2",
+});
+
+// Initializing messaging registers the background push handler internally.
+firebase.messaging();
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || "/";
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
+      // Focus an existing tab if one is open; otherwise open a new one.
+      for (const win of wins) {
+        if ("focus" in win) {
+          win.navigate?.(target);
+          return win.focus();
+        }
+      }
+      if (clients.openWindow) return clients.openWindow(target);
+    }),
+  );
+});
 
 const CACHE = "bb-shell-v1";
 const SHELL = ["/"];

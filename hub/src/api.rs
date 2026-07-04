@@ -2,9 +2,9 @@ use shared::{
     Announcement, AuthResponse, BroadcastRequest, CalendarToken, ChatMessage,
     CreateAnnouncementRequest, CreateEventRequest, CreateInviteRequest, CreateRideRequest, Event,
     InviteCode, LoginRequest, Notification, NotificationPrefs, Profile, RegisterPushTokenRequest,
-    RegisterRequest, Ride, Rsvp, RsvpRequest, SendChatRequest, UpdateAnnouncementRequest,
-    UpdateEventRequest, UpdateNotificationPrefs, UpdateProfileRequest, UpdateUserRequest,
-    UserSummary,
+    RegisterRequest, Ride, Rsvp, RsvpRequest, SendChatRequest, TestPushResponse,
+    UpdateAnnouncementRequest, UpdateEventRequest, UpdateNotificationPrefs, UpdateProfileRequest,
+    UpdateUserRequest, UserSummary,
 };
 
 /// API base chosen at runtime from the page's hostname, so the URL can never be
@@ -316,6 +316,10 @@ pub async fn unregister_push_token(device_token: &str, token: &str) -> Result<()
 
 pub async fn broadcast(req: BroadcastRequest, token: &str) -> Result<(), String> {
     post_unit("/notifications/broadcast", &req, token).await
+}
+
+pub async fn send_test_push(token: &str) -> Result<TestPushResponse, String> {
+    post_json("/notifications/test", &(), Some(token)).await
 }
 
 // ---- Calendar subscription ----

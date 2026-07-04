@@ -1,6 +1,10 @@
 use serde::{Deserialize, Serialize};
 use shared::ProfileLink;
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserDoc {
     pub id: String,
@@ -119,6 +123,11 @@ pub struct NotifPrefsDoc {
     /// Opt-in like chat: only members who ride should get ride pushes.
     #[serde(default)]
     pub mountain_bike: bool,
+    /// Admin-only test channel. Defaults on; the fanout restricts delivery to
+    /// admins/superadmins no matter what this says, so it's safe for members'
+    /// docs to carry `true`.
+    #[serde(default = "default_true")]
+    pub test: bool,
     /// Per-user inbox watermark: the feed hides notifications created at or
     /// before this unix-seconds time. "Clear" sets it to now. 0 = never cleared.
     #[serde(default)]

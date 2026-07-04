@@ -291,6 +291,9 @@ pub const CHANNEL_GENERAL: &str = "general";
 pub const CHANNEL_MOVIE_NIGHT: &str = "movie_night";
 pub const CHANNEL_CHAT: &str = "chat";
 pub const CHANNEL_MOUNTAIN_BIKE: &str = "mountain_bike";
+/// Admin-only channel for exercising the push pipeline without bothering
+/// members: only admins/superadmins ever receive it, and it skips the inbox.
+pub const CHANNEL_TEST: &str = "test";
 
 /// A delivered notification, as shown in the inbox.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -313,6 +316,14 @@ pub struct NotificationPrefs {
     pub chat: bool,
     #[serde(default)]
     pub mountain_bike: bool,
+    /// Admin-only test channel. Defaults on — the backend restricts delivery
+    /// to admins/superadmins regardless of what's stored here.
+    #[serde(default = "default_true")]
+    pub test: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for NotificationPrefs {
@@ -326,6 +337,7 @@ impl Default for NotificationPrefs {
             movie_night: true,
             chat: false,
             mountain_bike: false,
+            test: true,
         }
     }
 }
@@ -337,12 +349,26 @@ pub struct UpdateNotificationPrefs {
     pub movie_night: Option<bool>,
     pub chat: Option<bool>,
     pub mountain_bike: Option<bool>,
+    #[serde(default)]
+    pub test: Option<bool>,
 }
 
 /// Register (or refresh) an FCM device token for the current user.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegisterPushTokenRequest {
     pub token: String,
+}
+
+/// Result of a self-serve test push: how many of the caller's devices are
+/// enrolled and how many actually accepted the send. Lets members verify the
+/// whole delivery path end-to-end from the profile page.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TestPushResponse {
+    pub devices: usize,
+    pub sent: usize,
+    /// Present when push is disabled server-side or a send failed.
+    #[serde(default)]
+    pub detail: Option<String>,
 }
 
 // Group chat
@@ -364,11 +390,14 @@ pub struct SendChatRequest {
     pub body: String,
 }
 
-/// Admin broadcast to the General channel.
+/// Admin broadcast. `channel` may be the General channel (default, everyone)
+/// or the Test channel (delivered only to admins/superadmins, skips the inbox).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BroadcastRequest {
     pub title: String,
     pub body: String,
+    #[serde(default)]
+    pub channel: Option<String>,
 }
 
 // Calendar subscription

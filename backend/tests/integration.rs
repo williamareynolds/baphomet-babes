@@ -1189,3 +1189,288 @@ async fn profile_phone_and_mtb_pref_roundtrip() {
     let (_, prefs) = send(&app, req("GET", "/notifications/prefs", Some(&member), None)).await;
     assert_eq!(prefs["mountain_bike"], true);
 }
+
+// ---- Push delivery (mock FCM server) ----
+//
+// These run the real fanout path against a local mock of the FCM HTTP v1 API,
+// asserting who gets targeted (prefs, roles, self-exclusion), what the payload
+// carries, and that dead tokens get pruned. The one thing they can't cover is
+// the browser end (service worker display) — that's guarded in e2e.
+
+mod mock_fcm {
+    use std::sync::{Arc, Mutex};
+    use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
+    use serde_json::Value;
+
+    #[derive(Clone, Default)]
+    pub struct Recorder(pub Arc<Mutex<Vec<Value>>>);
+
+    impl Recorder {
+        /// Device tokens targeted so far, in send order.
+        pub fn tokens(&self) -> Vec<String> {
+            self.0
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|m| m["message"]["token"].as_str().unwrap_or_default().to_string())
+                .collect()
+        }
+
+        pub fn requests(&self) -> Vec<Value> {
+            self.0.lock().unwrap().clone()
+        }
+
+        pub fn clear(&self) {
+            self.0.lock().unwrap().clear();
+        }
+
+        /// Wait until `n` sends arrive (fanout runs in a background task).
+        pub async fn wait_for(&self, n: usize) {
+            for _ in 0..200 {
+                if self.0.lock().unwrap().len() >= n {
+                    return;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+            }
+            panic!(
+                "timed out waiting for {n} FCM sends; got {:?}",
+                self.tokens()
+            );
+        }
+    }
+
+    async fn handle(State(rec): State<Recorder>, Json(body): Json<Value>) -> impl IntoResponse {
+        let token = body["message"]["token"].as_str().unwrap_or_default().to_string();
+        rec.0.lock().unwrap().push(body);
+        // Any token containing "stale" plays a dead device.
+        if token.contains("stale") {
+            (StatusCode::NOT_FOUND, r#"{"error":{"status":"UNREGISTERED"}}"#)
+        } else {
+            (StatusCode::OK, "{}")
+        }
+    }
+
+    /// Start the mock server; returns its base URL and the send recorder.
+    pub async fn start() -> (String, Recorder) {
+        let rec = Recorder::default();
+        let app = axum::Router::new()
+            .route(
+                "/v1/projects/{project}/messages:send",
+                axum::routing::post(handle),
+            )
+            .with_state(rec.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        (format!("http://{addr}"), rec)
+    }
+}
+
+/// Fresh app wired to a mock FCM server. Returns the app and the recorder.
+async fn test_app_with_push(name: &str) -> (Router, mock_fcm::Recorder) {
+    let (url, rec) = mock_fcm::start().await;
+    let project = format!("bb-test-{name}-{}", std::process::id());
+    let db = FirestoreDb::new(&project).await.expect("emulator connection");
+    let state = AppState {
+        db,
+        jwt_secret: JWT_SECRET.into(),
+        superadmin_invite_code: BOOTSTRAP.into(),
+        app_check: None,
+        fcm: Some(backend::fcm::Fcm::with_endpoint(&project, url, "test-oauth-token")),
+    };
+    (build_app(state, None, RateLimit { per_second: 1, burst: 1_000_000 }), rec)
+}
+
+async fn register_device(app: &Router, token: &str, device: &str) {
+    let (status, body) = send(app, req("PUT", "/notifications/token", Some(token), Some(json!({
+        "token": device
+    })))).await;
+    assert_eq!(status, StatusCode::OK, "device registration failed: {body}");
+}
+
+#[tokio::test]
+async fn push_broadcast_targets_subscribed_devices_with_full_payload() {
+    if !emulator_available() { return; }
+    let (app, fcm) = test_app_with_push("push-bcast").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, _) = invite_and_register(&app, &root, "m1@test.com", "m1", "member").await;
+    let (optout, _) = invite_and_register(&app, &root, "m2@test.com", "m2", "member").await;
+
+    register_device(&app, &root, "dev-root").await;
+    register_device(&app, &member, "dev-member").await;
+    register_device(&app, &optout, "dev-optout").await;
+
+    // One member opts out of the General channel.
+    let (status, _) = send(&app, req("PUT", "/notifications/prefs", Some(&optout), Some(json!({
+        "general": false
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, _) = send(&app, req("POST", "/notifications/broadcast", Some(&root), Some(json!({
+        "title": "Hello", "body": "world"
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+
+    fcm.wait_for(2).await;
+    let mut tokens = fcm.tokens();
+    tokens.sort();
+    assert_eq!(tokens, vec!["dev-member", "dev-root"], "opted-out device must be skipped");
+
+    // The payload carries exactly what the service worker displays.
+    let msg = &fcm.requests()[0]["message"];
+    assert_eq!(msg["notification"]["title"], "Hello");
+    assert_eq!(msg["notification"]["body"], "world");
+    assert_eq!(msg["data"]["url"], "/notifications");
+}
+
+#[tokio::test]
+async fn push_prunes_dead_device_tokens() {
+    if !emulator_available() { return; }
+    let (app, fcm) = test_app_with_push("push-prune").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, _) = invite_and_register(&app, &root, "p1@test.com", "p1", "member").await;
+
+    register_device(&app, &member, "dev-live").await;
+    register_device(&app, &member, "dev-stale").await; // mock replies UNREGISTERED
+
+    let (status, _) = send(&app, req("POST", "/notifications/broadcast", Some(&root), Some(json!({
+        "title": "One", "body": "x"
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+    fcm.wait_for(2).await;
+    fcm.clear();
+
+    // Second broadcast: the dead token must be gone from the fanout.
+    let (status, _) = send(&app, req("POST", "/notifications/broadcast", Some(&root), Some(json!({
+        "title": "Two", "body": "y"
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+    fcm.wait_for(1).await;
+    // Give any (wrong) extra send a moment to show up before asserting.
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    assert_eq!(fcm.tokens(), vec!["dev-live"], "stale token must be pruned after UNREGISTERED");
+}
+
+#[tokio::test]
+async fn ride_pushes_are_opt_in_and_skip_the_author() {
+    if !emulator_available() { return; }
+    let (app, fcm) = test_app_with_push("push-rides").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (author, _) = invite_and_register(&app, &root, "r1@test.com", "r1", "member").await;
+    let (rider, _) = invite_and_register(&app, &root, "r2@test.com", "r2", "member").await;
+
+    register_device(&app, &author, "dev-author").await;
+    register_device(&app, &rider, "dev-rider").await;
+    register_device(&app, &root, "dev-root").await;
+
+    // Author opted in (proves self-exclusion, not prefs, is what skips them).
+    for tok in [&author, &rider] {
+        let (status, _) = send(&app, req("PUT", "/notifications/prefs", Some(tok), Some(json!({
+            "mountain_bike": true
+        })))).await;
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    let (status, body) = send(&app, req("POST", "/rides", Some(&author), Some(json!({
+        "location": "Coler", "start_at": "2026-08-01T09:00", "end_at": "2026-08-01T11:00"
+    })))).await;
+    assert_eq!(status, StatusCode::OK, "ride create failed: {body}");
+
+    // Only the opted-in rider is pushed: root never opted in (default off) and
+    // the author is excluded from their own ride.
+    fcm.wait_for(1).await;
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    assert_eq!(fcm.tokens(), vec!["dev-rider"]);
+}
+
+#[tokio::test]
+async fn test_channel_reaches_only_admins_and_skips_the_inbox() {
+    if !emulator_available() { return; }
+    let (app, fcm) = test_app_with_push("push-testch").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (admin, _) = invite_and_register(&app, &root, "a@test.com", "adm", "admin").await;
+    let (member, _) = invite_and_register(&app, &root, "m@test.com", "mem", "member").await;
+
+    register_device(&app, &root, "dev-root").await;
+    register_device(&app, &admin, "dev-admin").await;
+    register_device(&app, &member, "dev-member").await;
+
+    // Members can't opt INTO the test channel: even with the pref on, role
+    // filtering keeps them out.
+    let (status, _) = send(&app, req("PUT", "/notifications/prefs", Some(&member), Some(json!({
+        "test": true
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, _) = send(&app, req("POST", "/notifications/broadcast", Some(&root), Some(json!({
+        "title": "Pipeline check", "body": "ignore me", "channel": "test"
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+
+    fcm.wait_for(2).await;
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    let mut tokens = fcm.tokens();
+    tokens.sort();
+    assert_eq!(tokens, vec!["dev-admin", "dev-root"], "test channel must stay admin-only");
+
+    // Test broadcasts never land in anyone's inbox.
+    let (_, feed) = send(&app, req("GET", "/notifications", Some(&member), None)).await;
+    assert!(
+        !feed.as_array().unwrap().iter().any(|n| n["channel"] == "test"),
+        "test broadcast leaked into the inbox: {feed}"
+    );
+
+    // Admins can opt out of test messages.
+    let (status, _) = send(&app, req("PUT", "/notifications/prefs", Some(&admin), Some(json!({
+        "test": false
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+    fcm.clear();
+    let (status, _) = send(&app, req("POST", "/notifications/broadcast", Some(&root), Some(json!({
+        "title": "Again", "body": "x", "channel": "test"
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+    fcm.wait_for(1).await;
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    assert_eq!(fcm.tokens(), vec!["dev-root"], "opted-out admin must be skipped");
+
+    // Unknown channels are rejected outright.
+    let (status, _) = send(&app, req("POST", "/notifications/broadcast", Some(&root), Some(json!({
+        "title": "Bad", "body": "x", "channel": "nope"
+    })))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn self_test_push_targets_only_the_callers_devices() {
+    if !emulator_available() { return; }
+    let (app, fcm) = test_app_with_push("push-selftest").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, _) = invite_and_register(&app, &root, "s@test.com", "self", "member").await;
+
+    // No devices yet: report zero, send nothing.
+    let (status, body) = send(&app, req("POST", "/notifications/test", Some(&member), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["devices"], 0);
+    assert_eq!(body["sent"], 0);
+
+    register_device(&app, &member, "dev-mine-1").await;
+    register_device(&app, &member, "dev-mine-2").await;
+    register_device(&app, &root, "dev-not-mine").await;
+
+    let (status, body) = send(&app, req("POST", "/notifications/test", Some(&member), None)).await;
+    assert_eq!(status, StatusCode::OK, "test push failed: {body}");
+    assert_eq!(body["devices"], 2);
+    assert_eq!(body["sent"], 2);
+
+    let mut tokens = fcm.tokens();
+    tokens.sort();
+    assert_eq!(tokens, vec!["dev-mine-1", "dev-mine-2"], "must never touch other members' devices");
+    assert_eq!(fcm.requests()[0]["message"]["notification"]["title"], "Test notification");
+
+    // It requires auth like everything else.
+    let (status, _) = send(&app, req("POST", "/notifications/test", None, None)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}

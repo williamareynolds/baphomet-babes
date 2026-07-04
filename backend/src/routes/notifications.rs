@@ -12,13 +12,13 @@ use crate::{
     auth::{require_admin, require_auth},
     error::{AppError, AppResult},
     fcm::SendOutcome,
-    models::{NotifPrefsDoc, NotificationDoc, PushTokenDoc},
+    models::{NotifPrefsDoc, NotificationDoc, PushTokenDoc, UserDoc},
 };
 use anyhow::Context;
 use axum::{Json, extract::State, http::HeaderMap};
 use shared::{
-    BroadcastRequest, CHANNEL_GENERAL, Notification, NotificationPrefs, RegisterPushTokenRequest,
-    UpdateNotificationPrefs,
+    BroadcastRequest, CHANNEL_GENERAL, CHANNEL_TEST, Notification, NotificationPrefs,
+    RegisterPushTokenRequest, TestPushResponse, UpdateNotificationPrefs,
 };
 use uuid::Uuid;
 
@@ -36,6 +36,7 @@ pub fn router() -> axum::Router<AppState> {
         .route("/token", put(register_token).delete(unregister_token))
         .route("/prefs", get(get_prefs).put(update_prefs))
         .route("/broadcast", post(broadcast))
+        .route("/test", post(test_push))
 }
 
 fn now() -> i64 {
@@ -66,6 +67,7 @@ fn channel_default(channel: &str) -> bool {
         shared::CHANNEL_MOVIE_NIGHT => d.movie_night,
         shared::CHANNEL_CHAT => d.chat,
         shared::CHANNEL_MOUNTAIN_BIKE => d.mountain_bike,
+        shared::CHANNEL_TEST => d.test,
         _ => false,
     }
 }
@@ -77,6 +79,7 @@ fn prefs_for(channel: &str, p: &NotifPrefsDoc) -> bool {
         shared::CHANNEL_MOVIE_NIGHT => p.movie_night,
         shared::CHANNEL_CHAT => p.chat,
         shared::CHANNEL_MOUNTAIN_BIKE => p.mountain_bike,
+        shared::CHANNEL_TEST => p.test,
         _ => false,
     }
 }
@@ -197,6 +200,7 @@ async fn load_prefs(state: &AppState, user_id: &str) -> anyhow::Result<NotifPref
         movie_night: true,
         chat: false,
         mountain_bike: false,
+        test: true,
         cleared_at: 0,
     }))
 }
@@ -213,6 +217,7 @@ async fn get_prefs(
         movie_night: p.movie_night,
         chat: p.chat,
         mountain_bike: p.mountain_bike,
+        test: p.test,
     }))
 }
 
@@ -231,6 +236,7 @@ async fn update_prefs(
         movie_night: req.movie_night.unwrap_or(existing.movie_night),
         chat: req.chat.unwrap_or(existing.chat),
         mountain_bike: req.mountain_bike.unwrap_or(existing.mountain_bike),
+        test: req.test.unwrap_or(existing.test),
         cleared_at: existing.cleared_at,
     };
 
@@ -250,10 +256,11 @@ async fn update_prefs(
         movie_night: updated.movie_night,
         chat: updated.chat,
         mountain_bike: updated.mountain_bike,
+        test: updated.test,
     }))
 }
 
-// ---- admin broadcast (General channel) ----
+// ---- admin broadcast (General or Test channel) ----
 
 async fn broadcast(
     State(state): State<AppState>,
@@ -264,8 +271,85 @@ async fn broadcast(
     if req.title.trim().is_empty() {
         return Err(AppError::BadRequest("title is required".into()));
     }
-    dispatch(&state, CHANNEL_GENERAL, &req.title, &req.body, Some("/notifications"), None).await?;
+    match req.channel.as_deref().unwrap_or(CHANNEL_GENERAL) {
+        CHANNEL_GENERAL => {
+            dispatch(&state, CHANNEL_GENERAL, &req.title, &req.body, Some("/notifications"), None)
+                .await?;
+        }
+        // Test broadcasts exercise the push pipeline only: no inbox entry, and
+        // the fanout delivers solely to admins/superadmins.
+        CHANNEL_TEST => {
+            push_only(&state, CHANNEL_TEST, &req.title, &req.body, Some("/notifications"), None);
+        }
+        other => {
+            return Err(AppError::BadRequest(format!("unknown broadcast channel: {other}")));
+        }
+    }
     Ok(())
+}
+
+// ---- self-serve test push ----
+
+/// Send a test notification to the caller's own devices, synchronously, and
+/// report exactly what happened. This is the end-to-end probe members (and we)
+/// use to verify the delivery path — it bypasses channel prefs on purpose:
+/// asking for a test IS the opt-in.
+async fn test_push(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<Json<TestPushResponse>> {
+    let claims = require_auth(&state, &headers).await?;
+
+    let tokens: Vec<PushTokenDoc> = state.db
+        .fluent()
+        .select()
+        .from(PUSH_TOKENS)
+        .obj()
+        .query()
+        .await
+        .context("failed to load push tokens")?;
+    let mine: Vec<PushTokenDoc> =
+        tokens.into_iter().filter(|t| t.user_id == claims.sub).collect();
+    let devices = mine.len();
+
+    let Some(fcm) = &state.fcm else {
+        return Ok(Json(TestPushResponse {
+            devices,
+            sent: 0,
+            detail: Some("push is disabled on this server".into()),
+        }));
+    };
+
+    let mut sent = 0usize;
+    let mut detail: Option<String> = None;
+    for t in mine {
+        match fcm
+            .send(
+                &t.token,
+                "Test notification",
+                "Push notifications are working on this device. 🤘",
+                Some("/profile"),
+            )
+            .await
+        {
+            Ok(SendOutcome::Sent) => sent += 1,
+            Ok(SendOutcome::Stale) => {
+                detail = Some("a stale device registration was removed; re-enable push on that device".into());
+                let _ = state.db
+                    .fluent()
+                    .delete()
+                    .from(PUSH_TOKENS)
+                    .document_id(&t.token)
+                    .execute()
+                    .await;
+            }
+            Err(e) => {
+                tracing::warn!("test push failed: {e:#}");
+                detail = Some(format!("send failed: {e}"));
+            }
+        }
+    }
+    Ok(Json(TestPushResponse { devices, sent, detail }))
 }
 
 // ---- dispatch: persist + push ----
@@ -453,6 +537,28 @@ async fn fanout(
     let prefs: HashMap<String, NotifPrefsDoc> =
         prefs.into_iter().map(|p| (p.user_id.clone(), p)).collect();
 
+    // The test channel is restricted by role, not just preference: only
+    // admin/superadmin devices may receive it, whatever their prefs say.
+    let admin_only: Option<HashSet<String>> = if channel == CHANNEL_TEST {
+        let users: Vec<UserDoc> = state.db
+            .fluent()
+            .select()
+            .from("users")
+            .obj()
+            .query()
+            .await
+            .context("failed to load users for test-channel fanout")?;
+        Some(
+            users
+                .into_iter()
+                .filter(|u| u.role == "admin" || u.role == "superadmin")
+                .map(|u| u.id)
+                .collect(),
+        )
+    } else {
+        None
+    };
+
     let total = tokens.len();
     let (mut sent, mut stale, mut failed, mut skipped) = (0usize, 0usize, 0usize, 0usize);
     for t in tokens {
@@ -460,6 +566,12 @@ async fn fanout(
         if exclude_user == Some(t.user_id.as_str()) {
             skipped += 1;
             continue;
+        }
+        if let Some(allowed) = &admin_only {
+            if !allowed.contains(&t.user_id) {
+                skipped += 1;
+                continue;
+            }
         }
         // No prefs doc → fall back to the per-channel defaults (chat off, the
         // rest on), so an unsaved member isn't pushed every chat message.
