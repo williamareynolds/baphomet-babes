@@ -349,6 +349,7 @@ async fn test_push(
             }
         }
     }
+    tracing::info!("test push user={} devices={devices} sent={sent}", claims.sub);
     Ok(Json(TestPushResponse { devices, sent, detail }))
 }
 

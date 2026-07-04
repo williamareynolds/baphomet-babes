@@ -813,7 +813,7 @@
           // off (the inbox + prefs still work).
           const FCM_VAPID_KEY = "BIYDUr_LXBLmB8eWpThZi32UdazeTtJstU7qu_bkwQHU4VIkhbl18i9QGyQoj0ycVetBdJUpuuhEe0jdLEkkVIo";
           try {
-            const { getMessaging, getToken: getMessagingToken } = await import(
+            const { getMessaging, getToken: getMessagingToken, onMessage } = await import(
               "https://www.gstatic.com/firebasejs/11.1.0/firebase-messaging.js"
             );
             const messaging = getMessaging(app);
@@ -851,6 +851,18 @@
                 return null;
               }
             };
+            // Foreground pushes: the browser auto-displays "notification"
+            // payloads only while the app is NOT focused. A focused page gets
+            // this callback instead — without it, pushes (including the
+            // self-serve test) vanish whenever the app is open.
+            onMessage(messaging, (payload) => {
+              const n = payload && payload.notification;
+              if (!n || Notification.permission !== "granted") return;
+              swReg.showNotification(n.title || "Baphomet Babes", {
+                body: n.body || "",
+                data: { url: (payload.data && payload.data.url) || "/" },
+              });
+            });
           } catch (e) {
             console.error("FCM init failed:", e);
           }
