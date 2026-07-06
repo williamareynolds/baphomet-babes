@@ -128,8 +128,10 @@ test("admin can create then edit an event in place", async ({ page }) => {
   await login(page); // root is superadmin → admin
   await page.goto("/admin/events");
 
-  // Create an event.
+  // Create an event. The date lives behind the "Already scheduled?"
+  // disclosure — the normal flow leaves it for the poll to decide.
   await page.getByPlaceholder("Movie title").fill("The Crow");
+  await page.getByRole("button", { name: /Already scheduled/ }).click();
   await page.locator('input[type="date"]').first().fill("2030-10-31");
   await page.getByRole("button", { name: "Create Event" }).click();
   await expect(page.locator(".success")).toHaveText("Event created!");
@@ -483,28 +485,53 @@ test("voting is open while undated and closes once a date is set", async ({
   await page.getByRole("button", { name: "Create Event" }).click();
   await expect(page.locator(".success")).toHaveText("Event created!");
 
+  // The lifecycle stepper shows where it sits: poll set, date pending.
+  const card = page.locator(".thaw-card").filter({ hasText: "Undated Pick" });
+  await expect(card.locator(".stage-steps")).toHaveText(
+    /posted ✓ · poll ✓ · date — · rsvp —/i,
+  );
+
   // The vote page surfaces the open poll.
   await page.goto("/vote");
   await expect(page.getByText("Voting for:")).toBeVisible();
   await expect(page.getByText("Undated Pick")).toBeVisible();
 
-  // Set a date on it → the poll closes. (Clicking Edit swaps the card body for
-  // the edit form, so target the form by its #edit-title field.)
-  await page.goto("/admin/events");
-  const card = page.locator(".thaw-card").filter({ hasText: "Undated Pick" });
-  await card.getByRole("button", { name: "Edit" }).click();
-  const editForm = page.locator('form:has(#edit-title)');
-  await editForm.locator('input[type="date"]').first().fill("2031-12-25");
-  await editForm.getByRole("button", { name: "Save" }).click();
+  // Undated means nothing to RSVP to yet — the members' row hides the button.
+  await page.goto("/movie-nights");
+  const undatedRow = page.locator(".mn-row").filter({ hasText: "Undated Pick" });
+  await expect(undatedRow).toBeVisible();
+  await expect(undatedRow.locator(".rsvp-btn")).toHaveCount(0);
 
-  // The card swaps back to a display row showing the saved date.
-  await expect(
-    page.locator(".thaw-card").filter({ hasText: "Undated Pick" }),
-  ).toContainText("2031-12-25");
+  // Close the poll from the card's primary action; picking the date suggests
+  // an RSVP deadline of the day before.
+  await page.goto("/admin/events");
+  await card.getByRole("button", { name: "Close Poll & Set Date" }).click();
+  const stageForm = page.locator(".stage-form");
+  await stageForm.locator('input[type="date"]').first().fill("2031-12-25");
+  await expect(stageForm.locator('input[type="date"]').nth(1)).toHaveValue(
+    "2031-12-24",
+  );
+  await stageForm.getByRole("button", { name: "Save" }).click();
+
+  // The card shows the saved date and a fully-stamped stepper.
+  await expect(card).toContainText("2031-12-25");
+  await expect(card).toContainText("RSVP by 2031-12-24");
+  await expect(card.locator(".stage-steps")).toHaveText(
+    /posted ✓ · poll ✓ · date ✓ · rsvp ✓/i,
+  );
 
   await page.goto("/vote");
   await expect(
     page.getByText("No active poll right now. Check back soon!"),
+  ).toBeVisible();
+
+  // Now dated, members can RSVP to it.
+  await page.goto("/movie-nights");
+  await expect(
+    page
+      .locator(".mn-row")
+      .filter({ hasText: "Undated Pick" })
+      .locator(".rsvp-btn"),
   ).toBeVisible();
 });
 

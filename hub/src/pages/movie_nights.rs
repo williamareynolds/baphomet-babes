@@ -130,8 +130,15 @@ pub fn MovieNightsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                 let rsvp_event = f.clone();
                                 // Voting is to pick a date — once one is set, it's over.
                                 let voting_open = f.poll_embed_url.is_some() && f.date.is_none();
+                                // Until the poll picks a date there's nothing to RSVP to,
+                                // so a "3 going" count would be meaningless — hide it.
+                                let dated = f.date.is_some();
                                 let date_label = f.date.clone().map(|d| pretty_date(&d))
-                                    .unwrap_or_else(|| "Date TBD".to_string());
+                                    .unwrap_or_else(|| if voting_open {
+                                        "Voting open — help pick the date".to_string()
+                                    } else {
+                                        "Date TBD".to_string()
+                                    });
                                 view! {
                                     <div class="next-feature">
                                         {poster.map(|url| view! {
@@ -156,7 +163,7 @@ pub fn MovieNightsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                                     </A>
                                                 </div>
                                             })}
-                                            <EventRsvp event=rsvp_event auth=auth />
+                                            {dated.then(|| view! { <EventRsvp event=rsvp_event auth=auth /> })}
                                         </div>
                                     </div>
                                 }.into_any()
@@ -177,6 +184,7 @@ pub fn MovieNightsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                 <div>
                                     {slice.into_iter().map(|e| {
                                         let rsvp_event = e.clone();
+                                        let dated = e.date.is_some();
                                         view! {
                                         <Card>
                                             <div class="mn-row">
@@ -194,7 +202,7 @@ pub fn MovieNightsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                                     {e.description.map(|d| view! {
                                                         <p class="mn-desc">{d}</p>
                                                     })}
-                                                    <EventRsvp event=rsvp_event auth=auth />
+                                                    {dated.then(|| view! { <EventRsvp event=rsvp_event auth=auth /> })}
                                                 </div>
                                             </div>
                                         </Card>

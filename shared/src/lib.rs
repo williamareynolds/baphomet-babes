@@ -86,6 +86,28 @@ pub struct Event {
     pub my_rsvp: bool,
 }
 
+/// Where an event sits in its lifecycle: posted (title only) → voting (poll
+/// embed set, date still unknown) → scheduled (date set — the poll, if any, is
+/// implicitly closed). Derived from the fields, never stored.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EventStage {
+    Posted,
+    Voting,
+    Scheduled,
+}
+
+impl Event {
+    pub fn stage(&self) -> EventStage {
+        if self.date.is_some() {
+            EventStage::Scheduled
+        } else if self.poll_embed_url.is_some() {
+            EventStage::Voting
+        } else {
+            EventStage::Posted
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateEventRequest {
     pub event_type: String,
@@ -99,7 +121,7 @@ pub struct CreateEventRequest {
     pub rsvp_deadline: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct UpdateEventRequest {
     pub event_type: Option<String>,
     pub title: Option<String>,
@@ -414,4 +436,34 @@ pub struct CalendarToken {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorResponse {
     pub error: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn event(date: Option<&str>, poll: Option<&str>) -> Event {
+        Event {
+            id: "e1".into(),
+            event_type: "main".into(),
+            title: "The Wicker Man".into(),
+            date: date.map(String::from),
+            description: None,
+            poll_embed_url: poll.map(String::from),
+            poster_url: None,
+            rsvp_deadline: None,
+            rsvp_count: 0,
+            my_rsvp: false,
+        }
+    }
+
+    #[test]
+    fn stage_follows_the_poll_lifecycle() {
+        assert_eq!(event(None, None).stage(), EventStage::Posted);
+        assert_eq!(event(None, Some("https://rcv123.org/p/1")).stage(), EventStage::Voting);
+        // A date closes the poll — dated events are scheduled even if the
+        // embed URL is still around for the archive.
+        assert_eq!(event(Some("2030-10-31"), Some("https://rcv123.org/p/1")).stage(), EventStage::Scheduled);
+        assert_eq!(event(Some("2030-10-31"), None).stage(), EventStage::Scheduled);
+    }
 }

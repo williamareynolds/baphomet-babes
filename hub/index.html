@@ -420,6 +420,28 @@
       .admin-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem; }
       .poll-set { color: #93d8b4; font-size: 0.8rem; display: block; margin-top: 0.25rem; }
 
+      /* ---- Event lifecycle (admin) ----
+         The stepper mirrors the kicker treatment: mono, uppercase, tracked out.
+         Each step reads "posted ✓ · poll — · …" so the next blank IS the next
+         action — the buttons beside it name the same step. */
+      .stage-steps {
+        display: block; margin-top: 0.45rem;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.6rem; letter-spacing: 0.12em; text-transform: uppercase;
+        color: #ad9ea4;
+      }
+      .stage-hint { display: block; margin-top: 0.3rem; color: #bdafb2; font-size: 0.8rem; }
+      .stage-disclosure {
+        display: block; background: none; border: none; padding: 0; cursor: pointer;
+        font-family: 'IBM Plex Mono', monospace; font-size: 0.7rem;
+        color: #bda4e6; margin: 0.25rem 0 0.75rem;
+      }
+      .stage-disclosure:focus-visible { outline: 2px solid #bda4e6; outline-offset: 2px; }
+      .stage-form {
+        margin-top: 0.75rem; padding-top: 0.75rem;
+        border-top: 1px solid rgba(189, 175, 178, 0.2);
+      }
+
       /* ---- RSVP ---- */
       .rsvp { margin-top: 1.25rem; display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start; }
       .rsvp-stats { display: flex; gap: 0.75rem; align-items: baseline; flex-wrap: wrap; }
