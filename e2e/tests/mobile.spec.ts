@@ -71,6 +71,30 @@ test("login page fits the iPhone viewport", async ({ page }) => {
   await expectNoOverflow(page);
 });
 
+test("form fields are at least 16px so iOS never auto-zooms", async ({
+  page,
+}) => {
+  // iOS zooms the page when a focused field's font-size is under 16px, and in
+  // the installed PWA the zoom sticks after blur — the page opens "zoomed in"
+  // with the menu off-screen. The iPhone device profile has a coarse pointer,
+  // so the touch-only 16px override applies here.
+  await page.goto("/login");
+  await page.getByRole("button", { name: "Register" }).click();
+  await expect(page.locator("#reg-invite")).toBeVisible();
+  const tooSmall = await page.evaluate(() =>
+    Array.from(document.querySelectorAll("input, select, textarea"))
+      .map((el) => ({
+        id: el.id || el.tagName.toLowerCase(),
+        size: parseFloat(getComputedStyle(el).fontSize),
+      }))
+      .filter((f) => f.size < 16),
+  );
+  expect(
+    tooSmall,
+    `fields under 16px trigger the iOS focus zoom: ${JSON.stringify(tooSmall)}`,
+  ).toEqual([]);
+});
+
 test("home page fits the iPhone viewport", async ({ page }) => {
   await login(page);
   await page.goto("/");

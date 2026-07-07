@@ -362,6 +362,16 @@
          overflow — without it inputs keep their intrinsic size and push
          siblings (the remove button) off-screen. */
       .thaw-input, .thaw-select, .thaw-textarea { width: 100%; min-width: 0; }
+      /* iOS auto-zooms the whole page when a focused field's font-size is
+         under 16px, and in the installed PWA that zoom sticks after blur —
+         the page opens "zoomed in" with the menu off-screen until the user
+         pinches out. Thaw fields default to 14px, so force 16px on touch
+         devices (!important: thaw's stylesheet mounts after this one).
+         Never shrink a field below 16px on touch. */
+      @media (pointer: coarse) {
+        .thaw-input, .thaw-select, .thaw-textarea,
+        input, select, textarea { font-size: 16px !important; }
+      }
 
       /* Textareas (bio, announcements): room for a few sentences before the
          scrollbar appears. */
