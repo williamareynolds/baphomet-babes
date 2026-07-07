@@ -106,7 +106,7 @@ pub fn LoginPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                 <button
                     on:click=move |_| { set_tab.set("register"); set_error.set(String::new()); }
                     style=move || tab_style("register")
-                >"Request Entry"</button>
+                >"Register"</button>
             </div>
 
             <Show when=move || !error.get().is_empty()>

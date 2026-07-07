@@ -24,7 +24,7 @@ async function login(page: Page, email = EMAIL, password = PASSWORD) {
 
 test("register the bootstrap superadmin", async ({ page }) => {
   await page.goto("/login");
-  await page.getByRole("button", { name: "Request Entry" }).click();
+  await page.getByRole("button", { name: "Register" }).click();
 
   await page.fill("#reg-email", EMAIL);
   await page.fill("#reg-username", USERNAME);
