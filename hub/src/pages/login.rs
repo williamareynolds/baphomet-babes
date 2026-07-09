@@ -141,10 +141,10 @@ pub fn LoginPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                 </div>
                 <form on:submit=handle_register>
                     <Field label="Email">
-                        <Input id="reg-email" name="email" autocomplete="email" value=reg_email input_type=InputType::Email placeholder="you@example.com" />
+                        <Input id="reg-email" name="email" autocomplete="username" value=reg_email input_type=InputType::Email placeholder="you@example.com" />
                     </Field>
                     <Field label="Username">
-                        <Input id="reg-username" name="username" autocomplete="username" value=reg_username placeholder="username" />
+                        <Input id="reg-username" name="username" autocomplete="nickname" value=reg_username placeholder="username" />
                     </Field>
                     <Field label="Password">
                         <Input id="reg-password" name="new-password" autocomplete="new-password" value=reg_password input_type=InputType::Password placeholder="••••••••" />
