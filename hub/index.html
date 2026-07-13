@@ -19,6 +19,13 @@
          Registering a second worker at "/" replaces this one and pushes stop
          being displayed (see the header comment in sw.js). -->
     <link data-trunk rel="copy-file" href="public/sw.js"/>
+    <!-- Self-hosted Leaflet for the ride meeting-spot pin picker (public/leaflet
+         ships via the copy-dir above). No CDN: the JS is vendored, and OSM tiles
+         load only inside the picker, never on ride cards. -->
+    <link rel="stylesheet" href="/public/leaflet/leaflet.css" />
+    <!-- Classic (non-module) script: runs before Trunk's type=module WASM
+         bundle, so window.L is guaranteed defined by the time the picker inits. -->
+    <script src="/public/leaflet/leaflet.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,400&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet" />
@@ -470,6 +477,57 @@
       .rsvp-btn.going { background: transparent; color: #93d8b4; border: 1px solid #93d8b4; }
       .rsvp-names { margin: 0.5rem 0 0; padding-left: 1.2rem; color: #d8cdcf; }
       .rsvp-names li { margin: 0.15rem 0; }
+
+      /* ---- Rides: meeting-spot picker + contact ---- */
+      .ride-map {
+        height: 220px;
+        border-radius: 6px;
+        overflow: hidden;
+        border: 1px solid #251e2c;
+        /* Leaflet reads a real height off the container before it can lay out
+           tiles; keep it here rather than inline so themes can adjust it. */
+      }
+      .leaflet-container { background: #120d15; }
+      .ride-map-status {
+        display: flex; align-items: center; gap: 0.75rem;
+        margin-top: 0.5rem;
+      }
+      .ride-map-hint {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.68rem; letter-spacing: 0.08em; color: #95868f;
+      }
+      .ride-map-clear {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.68rem; letter-spacing: 0.06em;
+        background: transparent; color: #ee4b61;
+        border: none; padding: 0; cursor: pointer; text-decoration: underline;
+      }
+      .ride-meet {
+        margin-top: 0.5rem;
+        display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.6rem;
+        font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem;
+      }
+      .ride-meet-label {
+        letter-spacing: 0.12em; text-transform: uppercase;
+        font-size: 0.6rem; color: #95868f;
+      }
+      .ride-meet a { color: #9fc6ff; text-decoration: none; }
+      .ride-meet a:hover { text-decoration: underline; }
+      .ride-contact { margin-top: 0.5rem; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.6rem; }
+      .ride-contact-cap {
+        font-family: 'IBM Plex Mono', monospace;
+        letter-spacing: 0.12em; text-transform: uppercase;
+        font-size: 0.6rem; color: #95868f;
+      }
+      .ride-contact-link { color: #9fc6ff; text-decoration: none; word-break: break-all; }
+      .ride-contact-link:hover { text-decoration: underline; }
+      .ride-contact-btn {
+        display: inline-block;
+        font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem;
+        padding: 0.3rem 0.7rem; border-radius: 4px;
+        background: #3a76f0; color: #f3ebe3; text-decoration: none;
+      }
+      .ride-contact-btn:hover { opacity: 0.9; }
 
       /* ---- Movie Nights: next-feature marquee ---- */
       .kicker {

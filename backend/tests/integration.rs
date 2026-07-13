@@ -1158,6 +1158,89 @@ async fn ride_delete_permissions() {
 }
 
 #[tokio::test]
+async fn ride_meeting_spot_and_contact_roundtrip() {
+    if !emulator_available() { return; }
+    let app = test_app("ridemeta").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, _) = invite_and_register(&app, &root, "rm@test.com", "ridermeta", "member").await;
+
+    // Post a ride with a meeting-spot pin and a (whitespace-padded) contact.
+    let (status, created) = send(&app, req("POST", "/rides", Some(&member), Some(json!({
+        "location": "Coler",
+        "start_at": "2099-06-01T09:00",
+        "end_at": "2099-06-01T11:00",
+        "meeting_lat": 36.3729,
+        "meeting_lng": -94.2088,
+        "contact_info": "  https://signal.group/#abc  "
+    })))).await;
+    assert_eq!(status, StatusCode::OK, "create failed: {created}");
+    assert_eq!(created["meeting_lat"], 36.3729);
+    assert_eq!(created["meeting_lng"], -94.2088);
+    assert_eq!(created["contact_info"], "https://signal.group/#abc"); // trimmed
+    let id = created["id"].as_str().unwrap().to_string();
+
+    // The pin and contact persist and come back on the list.
+    let (_, list) = send(&app, req("GET", "/rides", Some(&member), None)).await;
+    let row = list.as_array().unwrap().iter().find(|r| r["id"] == id.as_str()).unwrap();
+    assert_eq!(row["meeting_lat"], 36.3729);
+    assert_eq!(row["meeting_lng"], -94.2088);
+    assert_eq!(row["contact_info"], "https://signal.group/#abc");
+
+    // A ride with neither field is fine — both come back null, not an error.
+    let (status, plain) = send(&app, req("POST", "/rides", Some(&member), Some(json!({
+        "location": "Railyard", "start_at": "2099-06-02T09:00", "end_at": "2099-06-02T11:00"
+    })))).await;
+    assert_eq!(status, StatusCode::OK, "plain create failed: {plain}");
+    assert!(plain["meeting_lat"].is_null());
+    assert!(plain["meeting_lng"].is_null());
+    assert!(plain["contact_info"].is_null());
+}
+
+#[tokio::test]
+async fn ride_meeting_spot_and_contact_validation() {
+    if !emulator_available() { return; }
+    let app = test_app("ridemetaval").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, _) = invite_and_register(&app, &root, "rmv@test.com", "ridermetaval", "member").await;
+
+    // A pin needs both coordinates — one alone is rejected.
+    let (status, body) = send(&app, req("POST", "/rides", Some(&member), Some(json!({
+        "location": "Coler", "start_at": "2099-06-01T09:00", "end_at": "2099-06-01T11:00",
+        "meeting_lat": 36.0
+    })))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap().contains("coordinate"));
+
+    // Coordinates off the map are rejected (lat then lng).
+    let (status, _) = send(&app, req("POST", "/rides", Some(&member), Some(json!({
+        "location": "Coler", "start_at": "2099-06-01T09:00", "end_at": "2099-06-01T11:00",
+        "meeting_lat": 120.0, "meeting_lng": 10.0
+    })))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, _) = send(&app, req("POST", "/rides", Some(&member), Some(json!({
+        "location": "Coler", "start_at": "2099-06-01T09:00", "end_at": "2099-06-01T11:00",
+        "meeting_lat": 10.0, "meeting_lng": 200.0
+    })))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // Blank contact is dropped to null, never stored as "".
+    let (status, created) = send(&app, req("POST", "/rides", Some(&member), Some(json!({
+        "location": "Coler", "start_at": "2099-06-01T09:00", "end_at": "2099-06-01T11:00",
+        "contact_info": "   "
+    })))).await;
+    assert_eq!(status, StatusCode::OK, "blank-contact create failed: {created}");
+    assert!(created["contact_info"].is_null());
+
+    // Overlong contact is capped at 500 chars so one entry can't bloat a doc.
+    let (status, created) = send(&app, req("POST", "/rides", Some(&member), Some(json!({
+        "location": "Coler", "start_at": "2099-06-01T09:00", "end_at": "2099-06-01T11:00",
+        "contact_info": "x".repeat(600)
+    })))).await;
+    assert_eq!(status, StatusCode::OK, "long-contact create failed: {created}");
+    assert_eq!(created["contact_info"].as_str().unwrap().len(), 500);
+}
+
+#[tokio::test]
 async fn profile_phone_and_mtb_pref_roundtrip() {
     if !emulator_available() { return; }
     let app = test_app("phone").await;

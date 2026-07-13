@@ -3,10 +3,67 @@
 
 use auth_client::AuthUser;
 use crate::api;
+use crate::map;
+use leptos::html::Div;
 use leptos::prelude::*;
-use shared::{CreateRideRequest, RIDE_LOCATIONS, Ride, UpdateNotificationPrefs};
+use shared::{ContactKind, CreateRideRequest, RIDE_LOCATIONS, Ride, UpdateNotificationPrefs, classify_contact};
 use thaw::{Button, ButtonAppearance, ButtonType, Card, Field, Input, InputType, Select, Switch};
+use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
+
+/// Bentonville — where the picker opens before a pin is dropped.
+const MAP_CENTER: (f64, f64) = (36.3729, -94.2088);
+/// The one meeting-spot picker on the page.
+const MAP_ID: &str = "bb-ride-map";
+
+/// "Open in maps" links from a pin. We never embed a map on a card — these
+/// hand off to the viewer's own map app, so browsing rides leaks no IPs to a
+/// tile server.
+fn map_links(lat: f64, lng: f64) -> impl IntoView {
+    let apple = format!("https://maps.apple.com/?ll={lat},{lng}&q=Meeting%20spot");
+    let google = format!("https://www.google.com/maps?q={lat},{lng}");
+    let osm = format!("https://www.openstreetmap.org/?mlat={lat}&mlon={lng}#map=16/{lat}/{lng}");
+    view! {
+        <p class="ride-meet">
+            <span class="ride-meet-label">"Meeting spot"</span>
+            <a href=apple target="_blank" rel="noopener noreferrer">"Apple"</a>
+            <a href=google target="_blank" rel="noopener noreferrer">"Google"</a>
+            <a href=osm target="_blank" rel="noopener noreferrer">"OSM"</a>
+        </p>
+    }
+}
+
+/// Render free-text contact info as a tappable link when `shared` recognises it
+/// — a Signal invite, any web link, an email, or a phone number — and as plain
+/// (escaped) text otherwise. Classification (and the safe-scheme rule) lives in
+/// `shared::classify_contact`, unit-tested there; this only maps to markup.
+fn contact_view(raw: &str) -> AnyView {
+    let s = raw.trim();
+    match classify_contact(s) {
+        ContactKind::Signal => view! {
+            <a class="ride-contact-btn" href=s.to_string() target="_blank" rel="noopener noreferrer">
+                "Join Signal group"
+            </a>
+        }
+        .into_any(),
+        ContactKind::Web => view! {
+            <a class="ride-contact-link" href=s.to_string() target="_blank" rel="noopener noreferrer">
+                {s.to_string()}
+            </a>
+        }
+        .into_any(),
+        ContactKind::Email => {
+            view! { <a class="ride-contact-link" href=format!("mailto:{s}")>{s.to_string()}</a> }
+                .into_any()
+        }
+        ContactKind::Phone(tel) => {
+            view! { <a class="ride-contact-link" href=format!("tel:{tel}")>{s.to_string()}</a> }
+                .into_any()
+        }
+        ContactKind::Plain if s.is_empty() => ().into_any(),
+        ContactKind::Plain => view! { <span>{s.to_string()}</span> }.into_any(),
+    }
+}
 
 /// Now as "YYYY-MM-DDTHH:MM" local, comparable to ride datetimes.
 fn now_local() -> String {
@@ -123,6 +180,13 @@ fn RideCard(ride: Ride, auth: RwSignal<Option<AuthUser>>, on_change: Callback<()
                 <h3 class="mn-title">{ride.location.clone()}</h3>
                 <p class="mn-date">{pretty_range(&ride.start_at, &ride.end_at)}</p>
                 <p class="mn-desc">{format!("Posted by {}", ride.created_by_name)}</p>
+                {ride.meeting_lat.zip(ride.meeting_lng).map(|(la, ln)| map_links(la, ln))}
+                {ride.contact_info.clone().filter(|c| !c.trim().is_empty()).map(|c| view! {
+                    <p class="ride-contact">
+                        <span class="ride-contact-cap">"Contact"</span>
+                        {contact_view(&c)}
+                    </p>
+                })}
                 <div class="rsvp">
                     <div class="rsvp-stats">
                         <span class="rsvp-count">{count_label}</span>
@@ -215,8 +279,36 @@ pub fn RidesPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let location = RwSignal::new(RIDE_LOCATIONS[0].to_string());
     let start_at = RwSignal::new(String::new());
     let end_at = RwSignal::new(String::new());
+    let contact = RwSignal::new(String::new());
+    // The meeting-spot pin. Both set together (on tap) or both None (no spot).
+    let meet_lat: RwSignal<Option<f64>> = RwSignal::new(None);
+    let meet_lng: RwSignal<Option<f64>> = RwSignal::new(None);
     let (form_error, set_form_error) = signal(String::new());
     let (form_success, set_form_success) = signal(String::new());
+
+    // Spin up the Leaflet picker once its div mounts. The click closure records
+    // the pin into the signals above; `forget()` hands it to JS for the map's
+    // lifetime. Guarded so it initialises exactly once.
+    let map_ref: NodeRef<Div> = NodeRef::new();
+    let map_inited = StoredValue::new(false);
+    Effect::new(move |_| {
+        if map_ref.get().is_none() || map_inited.get_value() {
+            return;
+        }
+        map_inited.set_value(true);
+        let on_pick = Closure::<dyn FnMut(f64, f64)>::new(move |la: f64, ln: f64| {
+            meet_lat.set(Some(la));
+            meet_lng.set(Some(ln));
+        });
+        map::init(MAP_ID, MAP_CENTER.0, MAP_CENTER.1, &on_pick);
+        on_pick.forget();
+    });
+
+    let clear_pin = move |_| {
+        map::clear(MAP_ID);
+        meet_lat.set(None);
+        meet_lng.set(None);
+    };
 
     let handle_create = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
@@ -227,10 +319,17 @@ pub fn RidesPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
             set_form_error.set("Pick a start and end time.".into());
             return;
         }
+        let contact_info = {
+            let t = contact.get().trim().to_string();
+            (!t.is_empty()).then_some(t)
+        };
         let req = CreateRideRequest {
             location: location.get(),
             start_at: start_at.get(),
             end_at: end_at.get(),
+            meeting_lat: meet_lat.get(),
+            meeting_lng: meet_lng.get(),
+            contact_info,
         };
         wasm_bindgen_futures::spawn_local(async move {
             match api::create_ride(req, &user.token).await {
@@ -238,6 +337,10 @@ pub fn RidesPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                     set_form_success.set("Ride posted — you're on the list!".into());
                     start_at.set(String::new());
                     end_at.set(String::new());
+                    contact.set(String::new());
+                    meet_lat.set(None);
+                    meet_lng.set(None);
+                    map::clear(MAP_ID);
                     set_refresh.update(|n| *n += 1);
                 }
                 Err(e) => set_form_error.set(e),
@@ -307,6 +410,25 @@ pub fn RidesPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                         </Field>
                         <Field label="Wrapping up">
                             <Input value=end_at input_type=InputType::DatetimeLocal />
+                        </Field>
+                        <Field label="Meeting spot (optional)">
+                            <div node_ref=map_ref id=MAP_ID class="ride-map"></div>
+                            <div class="ride-map-status">
+                                <Show
+                                    when=move || meet_lat.get().is_some()
+                                    fallback=|| view! {
+                                        <span class="ride-map-hint">"Tap the map to drop a pin"</span>
+                                    }
+                                >
+                                    <span class="ride-map-hint">"Pin dropped ✓"</span>
+                                    <button type="button" class="ride-map-clear" on:click=clear_pin>
+                                        "Clear"
+                                    </button>
+                                </Show>
+                            </div>
+                        </Field>
+                        <Field label="Contact (optional)">
+                            <Input value=contact placeholder="phone, email, or a group-chat link" />
                         </Field>
                         <Show when=move || !form_error.get().is_empty()>
                             <p class="error">{move || form_error.get()}</p>

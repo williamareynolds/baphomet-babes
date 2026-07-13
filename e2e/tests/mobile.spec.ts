@@ -30,14 +30,17 @@ async function horizontalOverflow(page: Page): Promise<string[]> {
   await page.evaluate(() => (document as any).fonts?.ready);
   return page.evaluate(() => {
     const docW = document.documentElement.clientWidth;
-    // An element legitimately past the edge if it lives inside a horizontally
-    // scrollable container (e.g. the admin tab strip is overflow-x:auto by
-    // design) — the user can scroll to it, so it's not the bug we're hunting.
-    const inScrollable = (el: Element): boolean => {
+    // An element past the edge isn't the bug we're hunting if some ancestor
+    // bounds it horizontally: overflow-x:auto/scroll means the user can scroll
+    // to it (e.g. the admin tab strip), and overflow-x:hidden means it's clipped
+    // and unreachable (e.g. Leaflet's oversized internal tile container inside
+    // .leaflet-container) — either way it can't push the page into a horizontal
+    // scroll, which is what we actually guard against.
+    const bounded = (el: Element): boolean => {
       let p = el.parentElement;
       while (p && p !== document.body) {
         const ox = getComputedStyle(p).overflowX;
-        if (ox === "auto" || ox === "scroll") return true;
+        if (ox === "auto" || ox === "scroll" || ox === "hidden") return true;
         p = p.parentElement;
       }
       return false;
@@ -46,7 +49,7 @@ async function horizontalOverflow(page: Page): Promise<string[]> {
     for (const el of Array.from(document.querySelectorAll("body *"))) {
       const r = el.getBoundingClientRect();
       if (r.width === 0 && r.height === 0) continue; // hidden
-      if (inScrollable(el)) continue;
+      if (bounded(el)) continue;
       // 1px slack for sub-pixel rounding.
       if (r.right > docW + 1) {
         const cls = (el.className || "").toString().trim().slice(0, 40);

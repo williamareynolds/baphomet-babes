@@ -238,6 +238,60 @@ test("a member posts a ride, is auto-attending, and can bail and rejoin", async 
   ).toHaveCount(0);
 });
 
+test("a ride can carry a meeting-spot pin and a contact link", async ({
+  page,
+}) => {
+  await login(page);
+  await page.goto("/rides");
+
+  await page.locator("select").selectOption("Bike Park");
+  await page.locator('input[type="datetime-local"]').nth(0).fill("2032-06-01T09:00");
+  await page.locator('input[type="datetime-local"]').nth(1).fill("2032-06-01T11:00");
+
+  // The Leaflet picker is self-hosted, so it initialises without any network;
+  // tapping it drops a pin even if OSM tiles never load. A click at a fixed
+  // pixel yields whatever coordinate lands there — we only care that a pin
+  // registered, not where.
+  // L.map(id) turns the div itself into the Leaflet container, so the class
+  // lands on #bb-ride-map (not a descendant) once init runs.
+  const map = page.locator("#bb-ride-map");
+  await expect(map).toBeVisible();
+  await expect(map).toHaveClass(/leaflet-container/);
+  await map.click({ position: { x: 150, y: 110 } });
+  await expect(page.locator(".ride-map-status")).toContainText("Pin dropped");
+
+  // Free-text contact: a Signal group invite gets its own button on the card.
+  const signalUrl = "https://signal.group/#CjQKIexampleinvite";
+  await page.getByPlaceholder("phone, email, or a group-chat link").fill(signalUrl);
+
+  await page.getByRole("button", { name: "Post Ride" }).click();
+  await expect(page.locator(".success")).toContainText("Ride posted");
+
+  const card = page.locator(".thaw-card").filter({ hasText: "Posted by Root Babe" });
+  await expect(card.locator(".mn-title")).toHaveText("Bike Park");
+
+  // Meeting spot renders as three "open in maps" links — no embedded map — so
+  // viewing the card never hits a tile server.
+  const meetLinks = card.locator(".ride-meet a");
+  await expect(meetLinks).toHaveCount(3);
+  await expect(card.locator(".ride-meet")).toContainText("Apple");
+  await expect(meetLinks.first()).toHaveAttribute("href", /maps\.apple\.com/);
+  // A pin is never an embedded iframe/tile on the card.
+  await expect(card.locator("iframe")).toHaveCount(0);
+  await expect(card.locator(".leaflet-container")).toHaveCount(0);
+
+  // The Signal invite becomes a labelled button pointing at the raw link.
+  const signalBtn = card.locator(".ride-contact-btn");
+  await expect(signalBtn).toHaveText("Join Signal group");
+  await expect(signalBtn).toHaveAttribute("href", signalUrl);
+
+  // Clean up so later serial tests see a fresh page.
+  await card.getByRole("button", { name: "Delete" }).click();
+  await expect(
+    page.locator(".thaw-card").filter({ hasText: "Posted by Root Babe" }),
+  ).toHaveCount(0);
+});
+
 test("the rides page notification toggle syncs with profile settings", async ({
   page,
 }) => {

@@ -75,6 +75,15 @@ pub struct RideDoc {
     pub created_by: String,
     /// Denormalized creator label, resolved at post time like chat authors.
     pub created_by_name: String,
+    /// Optional meeting-spot pin (both set together or both None) and optional
+    /// free-text contact info. `#[serde(default)]` so rides written before these
+    /// fields existed still deserialize.
+    #[serde(default)]
+    pub meeting_lat: Option<f64>,
+    #[serde(default)]
+    pub meeting_lng: Option<f64>,
+    #[serde(default)]
+    pub contact_info: Option<String>,
     pub created_at: i64,
 }
 

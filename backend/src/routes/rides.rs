@@ -61,6 +61,9 @@ fn doc_to_ride(d: RideDoc, attendees: Vec<String>, my_attending: bool) -> Ride {
         created_by: d.created_by,
         created_by_name: d.created_by_name,
         created_at: d.created_at,
+        meeting_lat: d.meeting_lat,
+        meeting_lng: d.meeting_lng,
+        contact_info: d.contact_info,
         attendees,
         my_attending,
     }
@@ -174,6 +177,27 @@ async fn create_ride(
         return Err(AppError::BadRequest("the ride must end after it starts".into()));
     }
 
+    // A meeting spot needs both coordinates or neither, and each in range.
+    let (meeting_lat, meeting_lng) = match (req.meeting_lat, req.meeting_lng) {
+        (Some(lat), Some(lng)) => {
+            if !(-90.0..=90.0).contains(&lat) || !(-180.0..=180.0).contains(&lng) {
+                return Err(AppError::BadRequest("meeting spot is off the map".into()));
+            }
+            (Some(lat), Some(lng))
+        }
+        (None, None) => (None, None),
+        _ => return Err(AppError::BadRequest("meeting spot needs both coordinates".into())),
+    };
+
+    // Contact is free text; trim, drop if blank, and cap so one entry can't
+    // balloon a document.
+    let contact_info = req
+        .contact_info
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.chars().take(500).collect::<String>());
+
     let id = Uuid::new_v4().to_string();
     let author = author_label(&state, &claims.sub).await?;
 
@@ -184,6 +208,9 @@ async fn create_ride(
         end_at: req.end_at.clone(),
         created_by: claims.sub.clone(),
         created_by_name: author.clone(),
+        meeting_lat,
+        meeting_lng,
+        contact_info,
         created_at: now(),
     };
     let _: RideDoc = state.db

@@ -172,6 +172,17 @@ pub struct Ride {
     pub created_by: String,
     pub created_by_name: String,
     pub created_at: i64,
+    /// Optional meeting-spot pin. Both set together or both None. Stored as raw
+    /// coordinates so the client can build "open in maps" links without ever
+    /// embedding a map (and leaking every viewer's IP to a tile server).
+    #[serde(default)]
+    pub meeting_lat: Option<f64>,
+    #[serde(default)]
+    pub meeting_lng: Option<f64>,
+    /// Optional free-text contact info: a phone number, email, or a link to a
+    /// group chat (e.g. a Signal group invite). Rendered smartly by the client.
+    #[serde(default)]
+    pub contact_info: Option<String>,
     /// Display names of everyone going (creator included), in join order.
     /// Unlike movie-night RSVPs these are visible to all members — knowing who
     /// you're riding with is the point.
@@ -187,6 +198,70 @@ pub struct CreateRideRequest {
     pub location: String,
     pub start_at: String,
     pub end_at: String,
+    #[serde(default)]
+    pub meeting_lat: Option<f64>,
+    #[serde(default)]
+    pub meeting_lng: Option<f64>,
+    #[serde(default)]
+    pub contact_info: Option<String>,
+}
+
+/// How a ride's free-text contact string should be presented. The
+/// classification lives here (not the WASM client) so it can be unit-tested on
+/// the host, and so the one place that decides "is this a safe link" is pinned
+/// by tests. The client only maps each variant to markup and NEVER emits an
+/// href outside http(s)/mailto/tel.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ContactKind {
+    /// A Signal group/contact invite link — render as a labelled button.
+    Signal,
+    /// Any other http(s) link — render as a plain link to the raw URL.
+    Web,
+    /// An email address — render as a `mailto:` link.
+    Email,
+    /// A phone number — render as a `tel:` link using this digits/`+` string.
+    Phone(String),
+    /// Anything unrecognised — render as escaped plain text, never a link.
+    Plain,
+}
+
+fn looks_like_email(s: &str) -> bool {
+    !s.contains(char::is_whitespace)
+        && s.split_once('@')
+            .is_some_and(|(user, domain)| !user.is_empty() && domain.len() > 2 && domain.contains('.'))
+}
+
+/// `Some(tel)` when `s` is phone-shaped (7–15 digits, only digits and the usual
+/// separators), where `tel` is the `tel:`-safe digits-and-plus reduction.
+fn phone_tel(s: &str) -> Option<String> {
+    let digits = s.chars().filter(char::is_ascii_digit).count();
+    let shaped = (7..=15).contains(&digits)
+        && s.chars().all(|c| c.is_ascii_digit() || " +-().".contains(c));
+    shaped.then(|| s.chars().filter(|c| c.is_ascii_digit() || *c == '+').collect())
+}
+
+/// Classify a (already-trimmed or not) contact string for rendering. Only
+/// `https://`/`http://` inputs are ever treated as links, so an attacker can't
+/// smuggle a `javascript:` (or other) scheme through the free-text field.
+pub fn classify_contact(raw: &str) -> ContactKind {
+    let s = raw.trim();
+    if s.is_empty() {
+        return ContactKind::Plain;
+    }
+    let is_web = s.starts_with("https://") || s.starts_with("http://");
+    if is_web && (s.contains("signal.group") || s.contains("signal.me")) {
+        return ContactKind::Signal;
+    }
+    if is_web {
+        return ContactKind::Web;
+    }
+    if looks_like_email(s) {
+        return ContactKind::Email;
+    }
+    if let Some(tel) = phone_tel(s) {
+        return ContactKind::Phone(tel);
+    }
+    ContactKind::Plain
 }
 
 // Announcements
@@ -465,5 +540,35 @@ mod tests {
         // embed URL is still around for the archive.
         assert_eq!(event(Some("2030-10-31"), Some("https://rcv123.org/p/1")).stage(), EventStage::Scheduled);
         assert_eq!(event(Some("2030-10-31"), None).stage(), EventStage::Scheduled);
+    }
+
+    #[test]
+    fn contact_classifies_signal_and_web_links() {
+        assert_eq!(classify_contact("https://signal.group/#CjQKIabc"), ContactKind::Signal);
+        assert_eq!(classify_contact("https://signal.me/#p/+15550100"), ContactKind::Signal);
+        assert_eq!(classify_contact("  https://signal.group/#x  "), ContactKind::Signal); // trimmed
+        assert_eq!(classify_contact("https://chat.example.com/room"), ContactKind::Web);
+        assert_eq!(classify_contact("http://example.com"), ContactKind::Web);
+    }
+
+    #[test]
+    fn contact_classifies_email_and_phone() {
+        assert_eq!(classify_contact("rider@example.com"), ContactKind::Email);
+        assert_eq!(classify_contact("479-555-0142"), ContactKind::Phone("4795550142".into()));
+        assert_eq!(classify_contact("+1 (479) 555-0142"), ContactKind::Phone("+14795550142".into()));
+    }
+
+    #[test]
+    fn contact_falls_back_to_plain_text() {
+        // Empty, prose, a bare mention, and — critically — an unsafe scheme all
+        // stay plain text: only http(s) is ever linkified.
+        assert_eq!(classify_contact(""), ContactKind::Plain);
+        assert_eq!(classify_contact("   "), ContactKind::Plain);
+        assert_eq!(classify_contact("ask me at the trailhead"), ContactKind::Plain);
+        assert_eq!(classify_contact("javascript:alert(1)"), ContactKind::Plain);
+        assert_eq!(classify_contact("ftp://files.example.com"), ContactKind::Plain);
+        // "@handle" is not an email (no domain), and "123" is too short to be a phone.
+        assert_eq!(classify_contact("@rider"), ContactKind::Plain);
+        assert_eq!(classify_contact("123"), ContactKind::Plain);
     }
 }

@@ -2,7 +2,7 @@
 //! Firestore. A failure here means a breaking change to data either in flight
 //! or at rest — fix the code or consciously update the golden file.
 
-use backend::models::{EventDoc, ProfileDoc};
+use backend::models::{EventDoc, ProfileDoc, RideDoc};
 use serde_json::Value;
 use shared::{AuthResponse, ErrorResponse, Event, InviteCode, Profile, ProfileLink, UserInfo};
 
@@ -93,6 +93,17 @@ fn legacy_event_doc_still_deserializes() {
     let doc: EventDoc = serde_json::from_value(golden("legacy_event_doc")).unwrap();
     assert_eq!(doc.title, "Bike Ride");
     assert_eq!(doc.poster_url, None);
+}
+
+/// Rides written before the meeting-spot pin and contact field existed must
+/// still deserialize — both ride on #[serde(default)].
+#[test]
+fn legacy_ride_doc_still_deserializes() {
+    let doc: RideDoc = serde_json::from_value(golden("legacy_ride_doc")).unwrap();
+    assert_eq!(doc.location, "Slaughter Pen");
+    assert_eq!(doc.meeting_lat, None);
+    assert_eq!(doc.meeting_lng, None);
+    assert_eq!(doc.contact_info, None);
 }
 
 /// Profile docs containing only the required fields must still deserialize —
