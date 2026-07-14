@@ -8,23 +8,29 @@
 
 use wasm_bindgen::prelude::*;
 
-#[wasm_bindgen(inline_js = r#"
+#[wasm_bindgen(inline_js = r##"
 const registry = {};
+
+// Marker as an inline-SVG divIcon: no <img>, so no separate PNG request that
+// could 404, get mis-pathed, or fail the retina swap (WebKit paints a broken
+// <img> as a "?" box — icon + shadow gave two of them). The pin is DOM, drawn
+// from the theme red, and needs no files from public/leaflet.
+function bbPinIcon(L) {
+  return L.divIcon({
+    className: 'bb-pin',
+    html:
+      '<svg width="26" height="38" viewBox="0 0 26 38" xmlns="http://www.w3.org/2000/svg">' +
+      '<path d="M13 0C5.82 0 0 5.82 0 13c0 9.75 13 25 13 25s13-15.25 13-25C26 5.82 20.18 0 13 0z" ' +
+      'fill="#ee4b61" stroke="#0c0a0e" stroke-width="1.5"/>' +
+      '<circle cx="13" cy="13" r="4.5" fill="#0c0a0e"/></svg>',
+    iconSize: [26, 38],
+    iconAnchor: [13, 38],
+  });
+}
 
 export function bb_map_init(id, lat, lng, onPick) {
   const L = window.L;
   if (!L) return;
-
-  // Leaflet auto-detects its marker images from the script URL, which breaks
-  // when vendored; point it at our copies explicitly (once).
-  if (!window.__bbIconsSet) {
-    window.__bbIconsSet = true;
-    L.Icon.Default.mergeOptions({
-      iconUrl: '/public/leaflet/marker-icon.png',
-      iconRetinaUrl: '/public/leaflet/marker-icon-2x.png',
-      shadowUrl: '/public/leaflet/marker-shadow.png',
-    });
-  }
 
   if (registry[id] || !document.getElementById(id)) return;
 
@@ -37,7 +43,7 @@ export function bb_map_init(id, lat, lng, onPick) {
   let marker = null;
   map.on('click', function (e) {
     if (marker) marker.setLatLng(e.latlng);
-    else marker = L.marker(e.latlng).addTo(map);
+    else marker = L.marker(e.latlng, { icon: bbPinIcon(L) }).addTo(map);
     onPick(e.latlng.lat, e.latlng.lng);
   });
 
@@ -54,7 +60,7 @@ export function bb_map_init(id, lat, lng, onPick) {
 
 export function bb_map_clear(id) { const m = registry[id]; if (m) m.clear(); }
 export function bb_map_destroy(id) { const m = registry[id]; if (m) m.destroy(); }
-"#)]
+"##)]
 extern "C" {
     /// Initialise a Leaflet map in the div with the given id, centred on
     /// `(lat, lng)`. Tapping the map drops/moves a marker and calls `on_pick`

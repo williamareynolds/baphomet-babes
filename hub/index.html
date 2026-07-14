@@ -488,6 +488,13 @@
            tiles; keep it here rather than inline so themes can adjust it. */
       }
       .leaflet-container { background: #120d15; }
+      /* Our SVG pin is a divIcon; strip Leaflet's default white box + border so
+         only the pin shows (drop-shadow gives it lift off the tiles). */
+      .bb-pin {
+        background: none;
+        border: none;
+        filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.5));
+      }
       .ride-map-status {
         display: flex; align-items: center; gap: 0.75rem;
         margin-top: 0.5rem;
