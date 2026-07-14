@@ -54,7 +54,12 @@ self.addEventListener("notificationclick", (event) => {
   );
 });
 
-const CACHE = "bb-shell-v1";
+// Bump this whenever a deploy must forcibly evict every client's cached shell.
+// Changing the string re-installs the worker (sw.js differs byte-for-byte), and
+// `activate` below deletes all caches whose name != CACHE — so stale hashed
+// assets (e.g. an old wasm bundle an installed iOS PWA was pinning) are purged
+// and the next fetch goes to network. v2: drop the pre-SVG Leaflet marker build.
+const CACHE = "bb-shell-v2";
 const SHELL = ["/"];
 
 self.addEventListener("install", (event) => {
