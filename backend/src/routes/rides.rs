@@ -11,7 +11,7 @@ use crate::{
 };
 use anyhow::Context;
 use axum::{Json, extract::{Path, State}, http::HeaderMap};
-use shared::{CreateRideRequest, RIDE_LOCATIONS, Ride, RsvpRequest};
+use shared::{CreateRideRequest, RIDE_LOCATIONS, Ride, RsvpRequest, UpdateRideRequest};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -30,7 +30,7 @@ pub fn router() -> axum::Router<AppState> {
     use axum::routing::{delete, get, post};
     axum::Router::new()
         .route("/", get(list_rides).post(create_ride))
-        .route("/{id}", delete(delete_ride))
+        .route("/{id}", delete(delete_ride).put(update_ride))
         .route("/{id}/attend", post(attend))
 }
 
@@ -64,6 +64,7 @@ fn doc_to_ride(d: RideDoc, attendees: Vec<String>, my_attending: bool) -> Ride {
         meeting_lat: d.meeting_lat,
         meeting_lng: d.meeting_lng,
         contact_info: d.contact_info,
+        notes: d.notes,
         attendees,
         my_attending,
     }
@@ -198,6 +199,14 @@ async fn create_ride(
         .filter(|s| !s.is_empty())
         .map(|s| s.chars().take(500).collect::<String>());
 
+    // Notes are free text too; same trim/drop-blank rule, roomier cap.
+    let notes = req
+        .notes
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.chars().take(1000).collect::<String>());
+
     let id = Uuid::new_v4().to_string();
     let author = author_label(&state, &claims.sub).await?;
 
@@ -211,6 +220,7 @@ async fn create_ride(
         meeting_lat,
         meeting_lng,
         contact_info,
+        notes,
         created_at: now(),
     };
     let _: RideDoc = state.db
@@ -256,6 +266,101 @@ async fn create_ride(
     }
 
     Ok(Json(doc_to_ride(doc, vec![author], true)))
+}
+
+/// Edit a ride. Allowed for the creator or any admin/superadmin — the same gate
+/// as delete. Field-merges like `update_event`: `Some(_)` replaces, `None`
+/// keeps. Re-validates location, times, and the meeting pin exactly as create.
+async fn update_ride(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(req): Json<UpdateRideRequest>,
+) -> AppResult<Json<Ride>> {
+    let claims = require_auth(&state, &headers).await?;
+    let existing = load_ride(&state, &id).await?;
+
+    let is_admin = claims.role == "admin" || claims.role == "superadmin";
+    if existing.created_by != claims.sub && !is_admin {
+        return Err(AppError::Forbidden);
+    }
+
+    let location = req.location.unwrap_or(existing.location);
+    if !RIDE_LOCATIONS.contains(&location.as_str()) {
+        return Err(AppError::BadRequest("unknown riding location".into()));
+    }
+    let start_at = req.start_at.unwrap_or(existing.start_at);
+    let end_at = req.end_at.unwrap_or(existing.end_at);
+    if !valid_datetime(&start_at) || !valid_datetime(&end_at) {
+        return Err(AppError::BadRequest("start and end must be YYYY-MM-DDTHH:MM".into()));
+    }
+    if end_at <= start_at {
+        return Err(AppError::BadRequest("the ride must end after it starts".into()));
+    }
+
+    // Meeting pin: an explicit clear wins; otherwise both coordinates move it
+    // (in-range, both-or-neither like create), and neither keeps what's stored.
+    let (meeting_lat, meeting_lng) = if req.clear_meeting {
+        (None, None)
+    } else {
+        match (req.meeting_lat, req.meeting_lng) {
+            (Some(lat), Some(lng)) => {
+                if !(-90.0..=90.0).contains(&lat) || !(-180.0..=180.0).contains(&lng) {
+                    return Err(AppError::BadRequest("meeting spot is off the map".into()));
+                }
+                (Some(lat), Some(lng))
+            }
+            (None, None) => (existing.meeting_lat, existing.meeting_lng),
+            _ => return Err(AppError::BadRequest("meeting spot needs both coordinates".into())),
+        }
+    };
+
+    // Contact and notes: Some("")/whitespace clears, Some(x) trims + caps + sets,
+    // None keeps the stored value.
+    let contact_info = match req.contact_info {
+        Some(s) => {
+            let t = s.trim();
+            (!t.is_empty()).then(|| t.chars().take(500).collect::<String>())
+        }
+        None => existing.contact_info,
+    };
+    let notes = match req.notes {
+        Some(s) => {
+            let t = s.trim();
+            (!t.is_empty()).then(|| t.chars().take(1000).collect::<String>())
+        }
+        None => existing.notes,
+    };
+
+    let updated = RideDoc {
+        id: existing.id.clone(),
+        location,
+        start_at,
+        end_at,
+        created_by: existing.created_by,
+        created_by_name: existing.created_by_name,
+        meeting_lat,
+        meeting_lng,
+        contact_info,
+        notes,
+        created_at: existing.created_at,
+    };
+
+    let _: RideDoc = state.db
+        .fluent()
+        .update()
+        .in_col(RIDES)
+        .document_id(&id)
+        .object(&updated)
+        .execute()
+        .await
+        .context("failed to update ride")?;
+
+    // Return the ride with its live attendee list and the caller's status.
+    let attendees = ride_attendees(&state, &id).await?;
+    let names: Vec<String> = attendees.iter().map(|a| a.author.clone()).collect();
+    let my = attendees.iter().any(|a| a.user_id == claims.sub);
+    Ok(Json(doc_to_ride(updated, names, my)))
 }
 
 /// The creator (or an admin) can take a ride down.

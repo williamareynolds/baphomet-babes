@@ -1158,6 +1158,77 @@ async fn ride_delete_permissions() {
 }
 
 #[tokio::test]
+async fn ride_edit_permissions_and_fields() {
+    if !emulator_available() { return; }
+    let app = test_app("rideedit").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (creator, _) = invite_and_register(&app, &root, "re@test.com", "editcreator", "member").await;
+    let (other, _) = invite_and_register(&app, &root, "reo@test.com", "editother", "member").await;
+
+    // A ride with a pin, a contact, and notes.
+    let (_, created) = send(&app, req("POST", "/rides", Some(&creator), Some(json!({
+        "location": "Coler", "start_at": "2099-06-01T09:00", "end_at": "2099-06-01T11:00",
+        "meeting_lat": 36.3729, "meeting_lng": -94.2088,
+        "contact_info": "479-555-0142",
+        "notes": "  Bring lights — dusk ride.  "
+    })))).await;
+    let id = created["id"].as_str().unwrap().to_string();
+    assert_eq!(created["notes"], "Bring lights — dusk ride."); // trimmed
+
+    // A non-creator, non-admin member can't edit it.
+    let (status, _) = send(&app, req("PUT", &format!("/rides/{id}"), Some(&other), Some(json!({
+        "location": "Railyard"
+    })))).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // The creator edits: change location + notes, leave everything else (a bare
+    // PUT keeps the pin, times, and contact).
+    let (status, updated) = send(&app, req("PUT", &format!("/rides/{id}"), Some(&creator), Some(json!({
+        "location": "Slaughter Pen",
+        "notes": "Weather looks iffy — may bail."
+    })))).await;
+    assert_eq!(status, StatusCode::OK, "creator edit failed: {updated}");
+    assert_eq!(updated["location"], "Slaughter Pen");
+    assert_eq!(updated["notes"], "Weather looks iffy — may bail.");
+    assert_eq!(updated["start_at"], "2099-06-01T09:00"); // kept
+    assert_eq!(updated["meeting_lat"], 36.3729); // pin kept
+    assert_eq!(updated["contact_info"], "479-555-0142"); // kept
+
+    // Clearing notes and the pin: empty notes + clear_meeting drop both.
+    let (_, cleared) = send(&app, req("PUT", &format!("/rides/{id}"), Some(&creator), Some(json!({
+        "notes": "   ", "clear_meeting": true
+    })))).await;
+    assert!(cleared["notes"].is_null());
+    assert!(cleared["meeting_lat"].is_null());
+    assert!(cleared["meeting_lng"].is_null());
+
+    // Overlong notes are capped at 1000 chars.
+    let (_, capped) = send(&app, req("PUT", &format!("/rides/{id}"), Some(&creator), Some(json!({
+        "notes": "z".repeat(1200)
+    })))).await;
+    assert_eq!(capped["notes"].as_str().unwrap().chars().count(), 1000);
+
+    // End must still be after start.
+    let (status, _) = send(&app, req("PUT", &format!("/rides/{id}"), Some(&creator), Some(json!({
+        "end_at": "2099-06-01T08:00"
+    })))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // A moved pin needs both coordinates.
+    let (status, _) = send(&app, req("PUT", &format!("/rides/{id}"), Some(&creator), Some(json!({
+        "meeting_lat": 36.0
+    })))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // An admin (here the superadmin) can edit someone else's ride.
+    let (status, adm) = send(&app, req("PUT", &format!("/rides/{id}"), Some(&root), Some(json!({
+        "location": "Bike Park"
+    })))).await;
+    assert_eq!(status, StatusCode::OK, "admin edit failed: {adm}");
+    assert_eq!(adm["location"], "Bike Park");
+}
+
+#[tokio::test]
 async fn ride_meeting_spot_and_contact_roundtrip() {
     if !emulator_available() { return; }
     let app = test_app("ridemeta").await;

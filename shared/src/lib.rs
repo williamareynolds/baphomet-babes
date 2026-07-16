@@ -183,6 +183,10 @@ pub struct Ride {
     /// group chat (e.g. a Signal group invite). Rendered smartly by the client.
     #[serde(default)]
     pub contact_info: Option<String>,
+    /// Optional free-text notes: weather/cancellation caveats, landmarks to find
+    /// the group, pace — whatever the poster wants to add. Plain escaped text.
+    #[serde(default)]
+    pub notes: Option<String>,
     /// Display names of everyone going (creator included), in join order.
     /// Unlike movie-night RSVPs these are visible to all members — knowing who
     /// you're riding with is the point.
@@ -204,6 +208,26 @@ pub struct CreateRideRequest {
     pub meeting_lng: Option<f64>,
     #[serde(default)]
     pub contact_info: Option<String>,
+    #[serde(default)]
+    pub notes: Option<String>,
+}
+
+/// Edit an existing ride. Every field is optional: `Some(_)` replaces, `None`
+/// keeps the stored value. The creator or any admin/superadmin may send this.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UpdateRideRequest {
+    pub location: Option<String>,
+    pub start_at: Option<String>,
+    pub end_at: Option<String>,
+    /// New pin: send both coordinates to move it, or neither to keep it. To drop
+    /// the pin entirely set `clear_meeting` (None here can't mean "clear").
+    pub meeting_lat: Option<f64>,
+    pub meeting_lng: Option<f64>,
+    #[serde(default)]
+    pub clear_meeting: bool,
+    /// `Some("")`/whitespace clears, `Some(x)` sets, `None` keeps — for both.
+    pub contact_info: Option<String>,
+    pub notes: Option<String>,
 }
 
 /// How a ride's free-text contact string should be presented. The

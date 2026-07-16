@@ -28,7 +28,7 @@ function bbPinIcon(L) {
   });
 }
 
-export function bb_map_init(id, lat, lng, onPick) {
+export function bb_map_init(id, lat, lng, seed, onPick) {
   const L = window.L;
   if (!L) return;
 
@@ -40,7 +40,9 @@ export function bb_map_init(id, lat, lng, onPick) {
     attribution: '&copy; OpenStreetMap',
   }).addTo(map);
 
-  let marker = null;
+  // `seed` pre-drops the marker at the centre (editing a ride that already has a
+  // pin), so the picker opens showing the current spot instead of empty.
+  let marker = seed ? L.marker([lat, lng], { icon: bbPinIcon(L) }).addTo(map) : null;
   map.on('click', function (e) {
     if (marker) marker.setLatLng(e.latlng);
     else marker = L.marker(e.latlng, { icon: bbPinIcon(L) }).addTo(map);
@@ -64,10 +66,11 @@ export function bb_map_destroy(id) { const m = registry[id]; if (m) m.destroy();
 extern "C" {
     /// Initialise a Leaflet map in the div with the given id, centred on
     /// `(lat, lng)`. Tapping the map drops/moves a marker and calls `on_pick`
-    /// with the chosen coordinates. No-op if Leaflet is missing or the id is
-    /// already initialised.
+    /// with the chosen coordinates. When `seed` is true a marker is pre-dropped
+    /// at the centre (for editing a ride whose pin is already set). No-op if
+    /// Leaflet is missing or the id is already initialised.
     #[wasm_bindgen(js_name = bb_map_init)]
-    pub fn init(id: &str, lat: f64, lng: f64, on_pick: &Closure<dyn FnMut(f64, f64)>);
+    pub fn init(id: &str, lat: f64, lng: f64, seed: bool, on_pick: &Closure<dyn FnMut(f64, f64)>);
 
     /// Remove the marker (if any) without tearing down the map.
     #[wasm_bindgen(js_name = bb_map_clear)]

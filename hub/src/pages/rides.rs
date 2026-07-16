@@ -6,8 +6,11 @@ use crate::api;
 use crate::map;
 use leptos::html::Div;
 use leptos::prelude::*;
-use shared::{ContactKind, CreateRideRequest, RIDE_LOCATIONS, Ride, UpdateNotificationPrefs, classify_contact};
-use thaw::{Button, ButtonAppearance, ButtonType, Card, Field, Input, InputType, Select, Switch};
+use shared::{
+    ContactKind, CreateRideRequest, RIDE_LOCATIONS, Ride, UpdateNotificationPrefs, UpdateRideRequest,
+    classify_contact,
+};
+use thaw::{Button, ButtonAppearance, ButtonType, Card, Field, Input, InputType, Select, Switch, Textarea};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
@@ -124,6 +127,10 @@ fn pretty_range(start: &str, end: &str) -> String {
 #[component]
 fn RideCard(ride: Ride, auth: RwSignal<Option<AuthUser>>, on_change: Callback<()>) -> impl IntoView {
     let id = ride.id.clone();
+    // The id in a StoredValue (Copy) so the handler closures below capture only
+    // Copy state — that keeps them Copy, which the reactive card body (which
+    // re-runs on the edit toggle) needs to reuse them across renders.
+    let ride_id = StoredValue::new(ride.id.clone());
     let going = RwSignal::new(ride.my_attending);
     let attendees = RwSignal::new(ride.attendees.clone());
     let busy = RwSignal::new(false);
@@ -132,41 +139,38 @@ fn RideCard(ride: Ride, auth: RwSignal<Option<AuthUser>>, on_change: Callback<()
     let own = auth.get_untracked().map(|u| u.id == ride.created_by || u.is_admin()).unwrap_or(false);
     let over = ride.end_at.as_str() < now_local().as_str();
 
-    let toggle = {
-        let id = id.clone();
-        move |_| {
-            if busy.get_untracked() {
-                return;
-            }
-            let Some(user) = auth.get() else { return };
-            let want = !going.get_untracked();
-            let id = id.clone();
-            busy.set(true);
-            err.set(String::new());
-            spawn_local(async move {
-                match api::attend_ride(&id, want, &user.token).await {
-                    Ok(r) => {
-                        going.set(r.my_attending);
-                        attendees.set(r.attendees);
-                    }
-                    Err(e) => err.set(e),
-                }
-                busy.set(false);
-            });
+    // The full ride, kept for prefilling the edit form on demand.
+    let ride_data = StoredValue::new(ride.clone());
+
+    let toggle = move |_| {
+        if busy.get_untracked() {
+            return;
         }
+        let Some(user) = auth.get() else { return };
+        let want = !going.get_untracked();
+        let id = ride_id.get_value();
+        busy.set(true);
+        err.set(String::new());
+        spawn_local(async move {
+            match api::attend_ride(&id, want, &user.token).await {
+                Ok(r) => {
+                    going.set(r.my_attending);
+                    attendees.set(r.attendees);
+                }
+                Err(e) => err.set(e),
+            }
+            busy.set(false);
+        });
     };
 
-    let remove = {
-        let id = id.clone();
-        move |_| {
-            let Some(user) = auth.get() else { return };
-            let id = id.clone();
-            spawn_local(async move {
-                if api::delete_ride(&id, &user.token).await.is_ok() {
-                    on_change.run(());
-                }
-            });
-        }
+    let remove = move |_| {
+        let Some(user) = auth.get() else { return };
+        let id = ride_id.get_value();
+        spawn_local(async move {
+            if api::delete_ride(&id, &user.token).await.is_ok() {
+                on_change.run(());
+            }
+        });
     };
 
     let count_label = move || {
@@ -174,48 +178,214 @@ fn RideCard(ride: Ride, auth: RwSignal<Option<AuthUser>>, on_change: Callback<()
         if n == 1 { "1 rider".to_string() } else { format!("{n} riders") }
     };
 
+    // ---- Inline edit (creator or admin) ----
+    let editing = RwSignal::new(false);
+    let edit_location = RwSignal::new(String::new());
+    let edit_start = RwSignal::new(String::new());
+    let edit_end = RwSignal::new(String::new());
+    let edit_contact = RwSignal::new(String::new());
+    let edit_notes = RwSignal::new(String::new());
+    let edit_lat: RwSignal<Option<f64>> = RwSignal::new(None);
+    let edit_lng: RwSignal<Option<f64>> = RwSignal::new(None);
+    let (edit_error, set_edit_error) = signal(String::new());
+    let edit_busy = RwSignal::new(false);
+
+    // A Leaflet picker per editing card (unique id → no clash with the create
+    // map or other cards). Built when edit opens, torn down when it closes. The
+    // id lives in a StoredValue so every closure below can share it by copy.
+    let edit_map_id = StoredValue::new(format!("bb-ride-map-edit-{id}"));
+    let edit_map_ref: NodeRef<Div> = NodeRef::new();
+    let edit_map_inited = StoredValue::new(false);
+    Effect::new(move |_| {
+        if editing.get() {
+            if edit_map_ref.get().is_none() || edit_map_inited.get_value() {
+                return;
+            }
+            edit_map_inited.set_value(true);
+            let seed = edit_lat.get_untracked().is_some();
+            let (clat, clng) = match (edit_lat.get_untracked(), edit_lng.get_untracked()) {
+                (Some(la), Some(ln)) => (la, ln),
+                _ => MAP_CENTER,
+            };
+            let on_pick = Closure::<dyn FnMut(f64, f64)>::new(move |la: f64, ln: f64| {
+                edit_lat.set(Some(la));
+                edit_lng.set(Some(ln));
+            });
+            map::init(&edit_map_id.get_value(), clat, clng, seed, &on_pick);
+            on_pick.forget();
+        } else if edit_map_inited.get_value() {
+            // Closed the form — drop the map so re-opening rebuilds it fresh.
+            map::destroy(&edit_map_id.get_value());
+            edit_map_inited.set_value(false);
+        }
+    });
+
+    let clear_edit_pin = move |_| {
+        map::clear(&edit_map_id.get_value());
+        edit_lat.set(None);
+        edit_lng.set(None);
+    };
+
+    let start_edit = move |_| {
+        let r = ride_data.get_value();
+        edit_location.set(r.location);
+        edit_start.set(r.start_at);
+        edit_end.set(r.end_at);
+        edit_contact.set(r.contact_info.unwrap_or_default());
+        edit_notes.set(r.notes.unwrap_or_default());
+        edit_lat.set(r.meeting_lat);
+        edit_lng.set(r.meeting_lng);
+        set_edit_error.set(String::new());
+        editing.set(true);
+    };
+
+    let submit_edit = move |ev: leptos::ev::SubmitEvent| {
+        ev.prevent_default();
+        if edit_busy.get_untracked() {
+            return;
+        }
+        let Some(user) = auth.get() else { return };
+        if edit_start.get().is_empty() || edit_end.get().is_empty() {
+            set_edit_error.set("Pick a start and end time.".into());
+            return;
+        }
+        // A pin set → send its coords; none → clear it (None means "keep").
+        let (meeting_lat, meeting_lng, clear_meeting) = match (edit_lat.get(), edit_lng.get()) {
+            (Some(la), Some(ln)) => (Some(la), Some(ln), false),
+            _ => (None, None, true),
+        };
+        // contact/notes always sent as Some so an emptied field clears it.
+        let req = UpdateRideRequest {
+            location: Some(edit_location.get()),
+            start_at: Some(edit_start.get()),
+            end_at: Some(edit_end.get()),
+            meeting_lat,
+            meeting_lng,
+            clear_meeting,
+            contact_info: Some(edit_contact.get()),
+            notes: Some(edit_notes.get()),
+        };
+        let id = ride_id.get_value();
+        edit_busy.set(true);
+        set_edit_error.set(String::new());
+        spawn_local(async move {
+            match api::update_ride(&id, req, &user.token).await {
+                Ok(_) => {
+                    editing.set(false);
+                    on_change.run(());
+                }
+                Err(e) => set_edit_error.set(e),
+            }
+            edit_busy.set(false);
+        });
+    };
+
     view! {
         <Card>
-            <div class="mn-body">
-                <h3 class="mn-title">{ride.location.clone()}</h3>
-                <p class="mn-date">{pretty_range(&ride.start_at, &ride.end_at)}</p>
-                <p class="mn-desc">{format!("Posted by {}", ride.created_by_name)}</p>
-                {ride.meeting_lat.zip(ride.meeting_lng).map(|(la, ln)| map_links(la, ln))}
-                {ride.contact_info.clone().filter(|c| !c.trim().is_empty()).map(|c| view! {
-                    <p class="ride-contact">
-                        <span class="ride-contact-cap">"Contact"</span>
-                        {contact_view(&c)}
-                    </p>
-                })}
-                <div class="rsvp">
-                    <div class="rsvp-stats">
-                        <span class="rsvp-count">{count_label}</span>
-                        <span class="rsvp-deadline">
-                            {move || attendees.get().join(", ")}
-                        </span>
-                    </div>
-                    <Show when=move || !over>
-                        <button
-                            type="button"
-                            class=move || if going.get() { "rsvp-btn going" } else { "rsvp-btn" }
-                            disabled=move || busy.get()
-                            on:click=toggle.clone()
-                        >
-                            {move || if going.get() { "Going ✓ · tap to bail" } else { "Join this ride" }}
-                        </button>
-                    </Show>
-                    <Show when=move || !err.get().is_empty()>
-                        <p class="error">{move || err.get()}</p>
-                    </Show>
-                </div>
-                {own.then(|| view! {
-                    <div style="margin-top:0.6rem;">
-                        <Button appearance=ButtonAppearance::Secondary on_click=remove.clone()>
-                            "Delete"
-                        </Button>
-                    </div>
-                })}
-            </div>
+            {move || {
+                if editing.get() {
+                    view! {
+                        <form class="mn-body" on:submit=submit_edit.clone()>
+                            <Field label="Where">
+                                <Select value=edit_location>
+                                    {RIDE_LOCATIONS.iter().map(|l| view! {
+                                        <option value={*l}>{*l}</option>
+                                    }).collect::<Vec<_>>()}
+                                </Select>
+                            </Field>
+                            <Field label="Rolling out">
+                                <Input value=edit_start input_type=InputType::DatetimeLocal />
+                            </Field>
+                            <Field label="Wrapping up">
+                                <Input value=edit_end input_type=InputType::DatetimeLocal />
+                            </Field>
+                            <Field label="Meeting spot (optional)">
+                                <div node_ref=edit_map_ref id=edit_map_id.get_value() class="ride-map"></div>
+                                <div class="ride-map-status">
+                                    <Show
+                                        when=move || edit_lat.get().is_some()
+                                        fallback=|| view! {
+                                            <span class="ride-map-hint">"Tap the map to drop a pin"</span>
+                                        }
+                                    >
+                                        <span class="ride-map-hint">"Pin dropped ✓"</span>
+                                        <button type="button" class="ride-map-clear" on:click=clear_edit_pin.clone()>
+                                            "Clear"
+                                        </button>
+                                    </Show>
+                                </div>
+                            </Field>
+                            <Field label="Contact (optional)">
+                                <Input value=edit_contact placeholder="phone, email, or a group-chat link" />
+                            </Field>
+                            <Field label="Additional info (optional)">
+                                <Textarea value=edit_notes placeholder="Weather call, landmarks to find the group, pace…" />
+                            </Field>
+                            <Show when=move || !edit_error.get().is_empty()>
+                                <p class="error">{move || edit_error.get()}</p>
+                            </Show>
+                            <div class="admin-actions">
+                                <Button button_type=ButtonType::Submit appearance=ButtonAppearance::Primary>"Save"</Button>
+                                <Button
+                                    button_type=ButtonType::Button
+                                    appearance=ButtonAppearance::Secondary
+                                    on_click=move |_| editing.set(false)
+                                >"Cancel"</Button>
+                            </div>
+                        </form>
+                    }.into_any()
+                } else {
+                    let r = ride_data.get_value();
+                    view! {
+                        <div class="mn-body">
+                            <h3 class="mn-title">{r.location.clone()}</h3>
+                            <p class="mn-date">{pretty_range(&r.start_at, &r.end_at)}</p>
+                            <p class="mn-desc">{format!("Posted by {}", r.created_by_name)}</p>
+                            {r.meeting_lat.zip(r.meeting_lng).map(|(la, ln)| map_links(la, ln))}
+                            {r.contact_info.clone().filter(|c| !c.trim().is_empty()).map(|c| view! {
+                                <p class="ride-contact">
+                                    <span class="ride-contact-cap">"Contact"</span>
+                                    {contact_view(&c)}
+                                </p>
+                            })}
+                            {r.notes.clone().filter(|n| !n.trim().is_empty()).map(|n| view! {
+                                <p class="ride-notes">{n}</p>
+                            })}
+                            <div class="rsvp">
+                                <div class="rsvp-stats">
+                                    <span class="rsvp-count">{count_label}</span>
+                                    <span class="rsvp-deadline">
+                                        {move || attendees.get().join(", ")}
+                                    </span>
+                                </div>
+                                <Show when=move || !over>
+                                    <button
+                                        type="button"
+                                        class=move || if going.get() { "rsvp-btn going" } else { "rsvp-btn" }
+                                        disabled=move || busy.get()
+                                        on:click=toggle.clone()
+                                    >
+                                        {move || if going.get() { "Going ✓ · tap to bail" } else { "Join this ride" }}
+                                    </button>
+                                </Show>
+                                <Show when=move || !err.get().is_empty()>
+                                    <p class="error">{move || err.get()}</p>
+                                </Show>
+                            </div>
+                            {own.then(|| view! {
+                                <div class="admin-actions" style="margin-top:0.6rem;">
+                                    <Button appearance=ButtonAppearance::Secondary on_click=start_edit>
+                                        "Edit"
+                                    </Button>
+                                    <Button appearance=ButtonAppearance::Secondary on_click=remove.clone()>
+                                        "Delete"
+                                    </Button>
+                                </div>
+                            })}
+                        </div>
+                    }.into_any()
+                }
+            }}
         </Card>
     }
 }
@@ -280,6 +450,7 @@ pub fn RidesPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let start_at = RwSignal::new(String::new());
     let end_at = RwSignal::new(String::new());
     let contact = RwSignal::new(String::new());
+    let notes = RwSignal::new(String::new());
     // The meeting-spot pin. Both set together (on tap) or both None (no spot).
     let meet_lat: RwSignal<Option<f64>> = RwSignal::new(None);
     let meet_lng: RwSignal<Option<f64>> = RwSignal::new(None);
@@ -300,7 +471,7 @@ pub fn RidesPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
             meet_lat.set(Some(la));
             meet_lng.set(Some(ln));
         });
-        map::init(MAP_ID, MAP_CENTER.0, MAP_CENTER.1, &on_pick);
+        map::init(MAP_ID, MAP_CENTER.0, MAP_CENTER.1, false, &on_pick);
         on_pick.forget();
     });
 
@@ -323,6 +494,10 @@ pub fn RidesPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
             let t = contact.get().trim().to_string();
             (!t.is_empty()).then_some(t)
         };
+        let notes_val = {
+            let t = notes.get().trim().to_string();
+            (!t.is_empty()).then_some(t)
+        };
         let req = CreateRideRequest {
             location: location.get(),
             start_at: start_at.get(),
@@ -330,6 +505,7 @@ pub fn RidesPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
             meeting_lat: meet_lat.get(),
             meeting_lng: meet_lng.get(),
             contact_info,
+            notes: notes_val,
         };
         wasm_bindgen_futures::spawn_local(async move {
             match api::create_ride(req, &user.token).await {
@@ -338,6 +514,7 @@ pub fn RidesPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                     start_at.set(String::new());
                     end_at.set(String::new());
                     contact.set(String::new());
+                    notes.set(String::new());
                     meet_lat.set(None);
                     meet_lng.set(None);
                     map::clear(MAP_ID);
@@ -429,6 +606,9 @@ pub fn RidesPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                         </Field>
                         <Field label="Contact (optional)">
                             <Input value=contact placeholder="phone, email, or a group-chat link" />
+                        </Field>
+                        <Field label="Additional info (optional)">
+                            <Textarea value=notes placeholder="Weather call, landmarks to find the group, pace…" />
                         </Field>
                         <Show when=move || !form_error.get().is_empty()>
                             <p class="error">{move || form_error.get()}</p>

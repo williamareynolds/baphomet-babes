@@ -59,7 +59,8 @@ self.addEventListener("notificationclick", (event) => {
 // `activate` below deletes all caches whose name != CACHE — so stale hashed
 // assets (e.g. an old wasm bundle an installed iOS PWA was pinning) are purged
 // and the next fetch goes to network. v2: drop the pre-SVG Leaflet marker build.
-const CACHE = "bb-shell-v2";
+// v3: ride edit + free-text notes field.
+const CACHE = "bb-shell-v3";
 const SHELL = ["/"];
 
 self.addEventListener("install", (event) => {

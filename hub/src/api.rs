@@ -4,7 +4,7 @@ use shared::{
     InviteCode, LoginRequest, Notification, NotificationPrefs, Profile, RegisterPushTokenRequest,
     RegisterRequest, Ride, Rsvp, RsvpRequest, SendChatRequest, TestPushResponse,
     UpdateAnnouncementRequest, UpdateEventRequest, UpdateNotificationPrefs, UpdateProfileRequest,
-    UpdateUserRequest, UserSummary,
+    UpdateRideRequest, UpdateUserRequest, UserSummary,
 };
 
 /// API base chosen at runtime from the page's hostname, so the URL can never be
@@ -276,6 +276,10 @@ pub async fn fetch_rides(token: &str) -> Result<Vec<Ride>, String> {
 
 pub async fn create_ride(req: CreateRideRequest, token: &str) -> Result<Ride, String> {
     post_json("/rides", &req, Some(token)).await
+}
+
+pub async fn update_ride(id: &str, req: UpdateRideRequest, token: &str) -> Result<Ride, String> {
+    put_json(&format!("/rides/{id}"), &req, token).await
 }
 
 pub async fn delete_ride(id: &str, token: &str) -> Result<(), String> {

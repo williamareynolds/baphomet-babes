@@ -84,6 +84,9 @@ pub struct RideDoc {
     pub meeting_lng: Option<f64>,
     #[serde(default)]
     pub contact_info: Option<String>,
+    /// Optional free-text notes (weather/cancellation caveats, landmarks, pace).
+    #[serde(default)]
+    pub notes: Option<String>,
     pub created_at: i64,
 }
 
