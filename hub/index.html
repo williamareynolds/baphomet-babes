@@ -541,6 +541,93 @@
         font-size: 0.86rem; color: #cdc3cb;
       }
 
+      /* ---- Post-a-ride: sticky action bar + bottom sheet ----
+         The ride list is the page; posting is the one action you can't do by
+         scrolling, so it lives in a thumb-reachable bar that summons a sheet.
+         Leave room at the page bottom so the fixed bar never hides the last
+         card (bar height + home-indicator inset). */
+      .rides-main { padding-bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px)); }
+
+      .ride-actionbar {
+        position: fixed;
+        left: 0; right: 0; bottom: 0;
+        z-index: 90;
+        display: flex; justify-content: center;
+        padding: 0.7rem clamp(1rem, 4vw, 2rem);
+        padding-bottom: max(0.7rem, env(safe-area-inset-bottom));
+        background: linear-gradient(to top, rgba(12, 10, 14, 0.98) 62%, rgba(12, 10, 14, 0));
+        pointer-events: none; /* let the transparent top gradient pass clicks */
+      }
+      .ride-post-btn {
+        pointer-events: auto;
+        width: 100%; max-width: 30rem;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.9rem; letter-spacing: 0.08em; text-transform: uppercase;
+        padding: 0.85rem 1rem; border-radius: 6px;
+        background: #ee4b61; color: #0c0a0e; border: none; cursor: pointer;
+        box-shadow: 0 6px 22px rgba(196, 30, 58, 0.35);
+        transition: opacity 0.15s ease, transform 0.15s ease;
+      }
+      .ride-post-btn::before { content: '⛧ '; opacity: 0.7; }
+      .ride-post-btn:hover { opacity: 0.92; }
+      .ride-post-btn:active { transform: translateY(1px); }
+
+      .ride-sheet-backdrop {
+        position: fixed; inset: 0;
+        z-index: 300;
+        background: rgba(6, 4, 8, 0.66);
+        -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+        opacity: 0; visibility: hidden;
+        transition: opacity 0.25s ease, visibility 0.25s ease;
+      }
+      .ride-sheet-backdrop.open { opacity: 1; visibility: visible; }
+
+      .ride-sheet {
+        position: fixed; left: 0; right: 0; bottom: 0;
+        z-index: 310;
+        margin: 0 auto; width: 100%; max-width: 34rem;
+        max-height: 92dvh; overflow-y: auto;
+        background: #16111c;
+        border-top: 2px solid #c41e3a;
+        border-radius: 20px 20px 0 0;
+        box-shadow: 0 -18px 50px rgba(0, 0, 0, 0.55);
+        padding: 0.75rem clamp(1rem, 5vw, 1.75rem);
+        padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
+        transform: translateY(100%);
+        visibility: hidden;
+        transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), visibility 0.32s ease;
+      }
+      .ride-sheet.open { transform: translateY(0); visibility: visible; }
+      /* On wide viewports the sheet floats as a centred card, still rising from
+         the bottom edge. */
+      @media (min-width: 720px) {
+        .ride-sheet { bottom: 1.5rem; border-radius: 16px; border: 1px solid rgba(196, 30, 58, 0.5); border-top: 2px solid #c41e3a; }
+      }
+
+      .ride-sheet-grip {
+        width: 2.5rem; height: 4px; border-radius: 999px;
+        background: rgba(243, 235, 227, 0.22);
+        margin: 0.15rem auto 0.6rem;
+      }
+      .ride-sheet-head {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 0.5rem;
+      }
+      .ride-sheet-head h2 { margin: 0; }
+      .ride-sheet-close {
+        flex: none;
+        width: 2rem; height: 2rem; border-radius: 6px;
+        background: transparent; color: #ad9ea4;
+        border: 1px solid rgba(243, 235, 227, 0.15);
+        font-size: 0.95rem; line-height: 1; cursor: pointer;
+        transition: color 0.15s ease, border-color 0.15s ease;
+      }
+      .ride-sheet-close:hover { color: #f3ebe3; border-color: rgba(243, 235, 227, 0.35); }
+
+      @media (prefers-reduced-motion: reduce) {
+        .ride-sheet, .ride-sheet-backdrop, .ride-post-btn { transition: none; }
+      }
+
       /* ---- Movie Nights: next-feature marquee ---- */
       .kicker {
         font-family: 'IBM Plex Mono', monospace;

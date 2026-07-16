@@ -455,7 +455,8 @@ pub fn RidesPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let meet_lat: RwSignal<Option<f64>> = RwSignal::new(None);
     let meet_lng: RwSignal<Option<f64>> = RwSignal::new(None);
     let (form_error, set_form_error) = signal(String::new());
-    let (form_success, set_form_success) = signal(String::new());
+    // Drives the post-a-ride bottom sheet (opened from the sticky action bar).
+    let sheet_open = RwSignal::new(false);
 
     // Spin up the Leaflet picker once its div mounts. The click closure records
     // the pin into the signals above; `forget()` hands it to JS for the map's
@@ -481,10 +482,17 @@ pub fn RidesPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
         meet_lng.set(None);
     };
 
+    // The picker initialises inside the hidden sheet; nudge Leaflet to remeasure
+    // each time the sheet opens so tiles lay out against the real size.
+    Effect::new(move |_| {
+        if sheet_open.get() {
+            map::refresh(MAP_ID);
+        }
+    });
+
     let handle_create = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
         set_form_error.set(String::new());
-        set_form_success.set(String::new());
         let Some(user) = auth.get() else { return };
         if start_at.get().is_empty() || end_at.get().is_empty() {
             set_form_error.set("Pick a start and end time.".into());
@@ -510,7 +518,9 @@ pub fn RidesPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
         wasm_bindgen_futures::spawn_local(async move {
             match api::create_ride(req, &user.token).await {
                 Ok(_) => {
-                    set_form_success.set("Ride posted — you're on the list!".into());
+                    // Close the sheet — the fresh ride pops to the top of the
+                    // list behind it, which is the confirmation.
+                    sheet_open.set(false);
                     start_at.set(String::new());
                     end_at.set(String::new());
                     contact.set(String::new());
@@ -563,7 +573,7 @@ pub fn RidesPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     };
 
     view! {
-        <main>
+        <main class="rides-main">
             <h1>"Mountain Bike Rides"</h1>
             <Show when=move || auth.get().is_some()>
                 <Show when=move || notif_loaded.get()>
@@ -572,8 +582,49 @@ pub fn RidesPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                     </div>
                 </Show>
 
-                <Card>
-                    <h2>"Post a Ride"</h2>
+                {ride_list}
+
+                // Sticky action bar — the one job of this page you can't do by
+                // scrolling. Thumb-reachable, safe-area aware.
+                <div class="ride-actionbar">
+                    <button
+                        type="button"
+                        class="ride-post-btn"
+                        aria-haspopup="dialog"
+                        aria-expanded=move || sheet_open.get().to_string()
+                        on:click=move |_| sheet_open.set(true)
+                    >
+                        "Post a Ride"
+                    </button>
+                </div>
+
+                // Bottom sheet: the picker div is always mounted (so Leaflet
+                // inits once and keeps its size); `.open` just slides it in.
+                <div
+                    class="ride-sheet-backdrop"
+                    class:open=sheet_open
+                    on:click=move |_| sheet_open.set(false)
+                ></div>
+                <div
+                    class="ride-sheet"
+                    class:open=sheet_open
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="ride-sheet-title"
+                    on:keydown=move |ev| if ev.key() == "Escape" { sheet_open.set(false) }
+                >
+                    <div class="ride-sheet-grip" aria-hidden="true"></div>
+                    <div class="ride-sheet-head">
+                        <h2 id="ride-sheet-title">"Post a Ride"</h2>
+                        <button
+                            type="button"
+                            class="ride-sheet-close"
+                            aria-label="Close"
+                            on:click=move |_| sheet_open.set(false)
+                        >
+                            "✕"
+                        </button>
+                    </div>
                     <form on:submit=handle_create>
                         <Field label="Where">
                             <Select value=location>
@@ -613,16 +664,11 @@ pub fn RidesPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                         <Show when=move || !form_error.get().is_empty()>
                             <p class="error">{move || form_error.get()}</p>
                         </Show>
-                        <Show when=move || !form_success.get().is_empty()>
-                            <p class="success">{move || form_success.get()}</p>
-                        </Show>
                         <Button button_type=ButtonType::Submit appearance=ButtonAppearance::Primary>
                             "Post Ride"
                         </Button>
                     </form>
-                </Card>
-
-                {ride_list}
+                </div>
             </Show>
         </main>
     }

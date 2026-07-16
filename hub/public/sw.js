@@ -60,7 +60,8 @@ self.addEventListener("notificationclick", (event) => {
 // assets (e.g. an old wasm bundle an installed iOS PWA was pinning) are purged
 // and the next fetch goes to network. v2: drop the pre-SVG Leaflet marker build.
 // v3: ride edit + free-text notes field.
-const CACHE = "bb-shell-v3";
+// v4: post-a-ride moved to a sticky bar + bottom sheet.
+const CACHE = "bb-shell-v4";
 const SHELL = ["/"];
 
 self.addEventListener("install", (event) => {

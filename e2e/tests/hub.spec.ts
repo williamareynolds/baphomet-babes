@@ -208,12 +208,17 @@ test("a member posts a ride, is auto-attending, and can bail and rejoin", async 
   await login(page);
   await page.goto("/rides");
 
+  // Posting lives in a bottom sheet opened from the sticky action bar.
+  await page.getByRole("button", { name: "Post a Ride" }).click();
+  await expect(page.locator(".ride-sheet")).toHaveClass(/open/);
+
   // Post a ride: pick a trail and a time window.
   await page.locator("select").selectOption("Coler");
   await page.locator('input[type="datetime-local"]').nth(0).fill("2031-06-01T09:00");
   await page.locator('input[type="datetime-local"]').nth(1).fill("2031-06-01T11:00");
   await page.getByRole("button", { name: "Post Ride" }).click();
-  await expect(page.locator(".success")).toContainText("Ride posted");
+  // On success the sheet closes and the fresh ride pops onto the list.
+  await expect(page.locator(".ride-sheet")).not.toHaveClass(/open/);
 
   // The ride card shows the trail, the poster, and — unlike movie nights —
   // the attendee names are visible to members. The creator is auto-attending.
@@ -244,6 +249,9 @@ test("a ride can carry a meeting-spot pin and a contact link", async ({
   await login(page);
   await page.goto("/rides");
 
+  await page.getByRole("button", { name: "Post a Ride" }).click();
+  await expect(page.locator(".ride-sheet")).toHaveClass(/open/);
+
   await page.locator("select").selectOption("Bike Park");
   await page.locator('input[type="datetime-local"]').nth(0).fill("2032-06-01T09:00");
   await page.locator('input[type="datetime-local"]').nth(1).fill("2032-06-01T11:00");
@@ -265,7 +273,7 @@ test("a ride can carry a meeting-spot pin and a contact link", async ({
   await page.getByPlaceholder("phone, email, or a group-chat link").fill(signalUrl);
 
   await page.getByRole("button", { name: "Post Ride" }).click();
-  await expect(page.locator(".success")).toContainText("Ride posted");
+  await expect(page.locator(".ride-sheet")).not.toHaveClass(/open/);
 
   const card = page.locator(".thaw-card").filter({ hasText: "Posted by Root Babe" });
   await expect(card.locator(".mn-title")).toHaveText("Bike Park");

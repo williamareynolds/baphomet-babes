@@ -62,6 +62,9 @@ export function bb_map_init(id, lat, lng, seed, onPick) {
 
 export function bb_map_clear(id) { const m = registry[id]; if (m) m.clear(); }
 export function bb_map_destroy(id) { const m = registry[id]; if (m) m.destroy(); }
+// Recompute tile geometry — call after the map's container becomes visible
+// (e.g. a picker that initialised inside a hidden bottom sheet).
+export function bb_map_refresh(id) { const m = registry[id]; if (m) m.map.invalidateSize(); }
 "##)]
 extern "C" {
     /// Initialise a Leaflet map in the div with the given id, centred on
@@ -80,4 +83,9 @@ extern "C" {
     #[wasm_bindgen(js_name = bb_map_destroy)]
     #[allow(dead_code)]
     pub fn destroy(id: &str);
+
+    /// Recompute tile geometry once the container is visible (a picker that
+    /// initialised inside a hidden sheet needs this on first reveal).
+    #[wasm_bindgen(js_name = bb_map_refresh)]
+    pub fn refresh(id: &str);
 }
