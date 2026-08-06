@@ -85,11 +85,30 @@ pub fn save_auth(user: &AuthUser) {
 }
 
 /// Load auth from localStorage only (has JWT). Cookie has no JWT.
+///
+/// A stored token that is already past its `exp` counts as no session at all:
+/// we drop it here so the app boots straight to the login screen instead of
+/// looking signed in and then failing every request with a 401. Without this the
+/// 30-day token lifetime is invisible to the client — the app stays "logged in"
+/// forever and members just see feeds that never update.
 pub fn load_auth() -> Option<AuthUser> {
-    local_storage()
+    let user = local_storage()
         .and_then(|s| s.get_item("auth_user").ok().flatten())
         .and_then(|s| serde_json::from_str::<AuthUser>(&s).ok())
-        .filter(|u| !u.token.is_empty())
+        .filter(|u| !u.token.is_empty())?;
+
+    if crate::jwt::is_expired(&user.token, now_seconds()) {
+        clear_auth();
+        return None;
+    }
+    Some(user)
+}
+
+/// Wall-clock seconds since the epoch, from the browser. Only ever compared
+/// against a token's `exp` for the local "is this session dead" check, so a
+/// skewed device clock costs at worst one redundant login.
+fn now_seconds() -> u64 {
+    (js_sys::Date::now() / 1000.0) as u64
 }
 
 /// Load identity from cross-domain cookie for display (no JWT).

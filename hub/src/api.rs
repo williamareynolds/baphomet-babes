@@ -33,6 +33,56 @@ async fn attach_app_check(
     }
 }
 
+/// The error every authed call returns once the backend has rejected the
+/// session. Callers use [`is_session_expired`] to tell "you're logged out" apart
+/// from "the network is down" — the two deserve very different handling.
+pub const SESSION_EXPIRED: &str = "Your session expired — please log in again.";
+
+/// Whether an API error came from a rejected session rather than a failed
+/// request.
+pub fn is_session_expired(err: &str) -> bool {
+    err == SESSION_EXPIRED
+}
+
+/// Drop the stored session and bounce to the login screen.
+///
+/// Runs at most once per page load: a page typically has several requests in
+/// flight and they will all 401 together, but only the first should navigate.
+fn end_session() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static ENDED: AtomicBool = AtomicBool::new(false);
+    if ENDED.swap(true, Ordering::Relaxed) {
+        return;
+    }
+    // Forget this device's push registration so the next login re-registers it
+    // (see the self-healing effect in `app`). We can't unregister it backend-side
+    // the way an explicit logout does — that call needs the token we just lost.
+    crate::push::clear();
+    auth_client::clear_auth();
+    // Hard navigation rather than flipping the auth signal: this module has no
+    // handle on it, and a fresh load also clears any half-populated page state.
+    if let Some(w) = web_sys::window() {
+        let _ = w.location().assign("/login");
+    }
+}
+
+/// Turn a non-2xx response into the message callers surface.
+///
+/// A 401 on a request that carried a token means the session is gone — expired,
+/// revoked, or the account was disabled — so end it here instead of letting the
+/// backend's wording leak into the UI. 401s from login/register are ordinary bad
+/// credentials and must not touch the session, hence `authed`.
+async fn error_message(resp: gloo_net::http::Response, authed: bool) -> String {
+    if authed && resp.status() == 401 {
+        end_session();
+        return SESSION_EXPIRED.to_string();
+    }
+    resp.json::<shared::ErrorResponse>()
+        .await
+        .map(|e| e.error)
+        .unwrap_or_else(|_| "unknown error".to_string())
+}
+
 async fn get<T: serde::de::DeserializeOwned>(path: &str, token: &str) -> Result<T, String> {
     let req = gloo_net::http::Request::get(&format!("{}{path}", api_base()))
         .header("Authorization", &format!("Bearer {token}"));
@@ -42,9 +92,7 @@ async fn get<T: serde::de::DeserializeOwned>(path: &str, token: &str) -> Result<
         .await
         .map_err(|e| e.to_string())?;
     if !resp.ok() {
-        let err: shared::ErrorResponse = resp.json().await
-            .unwrap_or(shared::ErrorResponse { error: "unknown error".into() });
-        return Err(err.error);
+        return Err(error_message(resp, true).await);
     }
     resp.json().await.map_err(|e| e.to_string())
 }
@@ -65,9 +113,7 @@ async fn put_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(
         .await
         .map_err(|e| e.to_string())?;
     if !resp.ok() {
-        let err: shared::ErrorResponse = resp.json().await
-            .unwrap_or(shared::ErrorResponse { error: "unknown error".into() });
-        return Err(err.error);
+        return Err(error_message(resp, true).await);
     }
     resp.json().await.map_err(|e| e.to_string())
 }
@@ -89,10 +135,10 @@ async fn post_json<B: serde::Serialize, T: serde::de::DeserializeOwned>(
         .send()
         .await
         .map_err(|e| e.to_string())?;
+    // Anonymous posts (login, register) get their 401s handled as bad
+    // credentials, not as a dead session.
     if !resp.ok() {
-        let err: shared::ErrorResponse = resp.json().await
-            .unwrap_or(shared::ErrorResponse { error: "unknown error".into() });
-        return Err(err.error);
+        return Err(error_message(resp, token.is_some()).await);
     }
     resp.json().await.map_err(|e| e.to_string())
 }
@@ -106,7 +152,7 @@ async fn delete(path: &str, token: &str) -> Result<(), String> {
         .await
         .map_err(|e| e.to_string())?;
     if !resp.ok() {
-        return Err("delete failed".into());
+        return Err(error_message(resp, true).await);
     }
     Ok(())
 }
@@ -121,7 +167,7 @@ async fn delete_returning<T: serde::de::DeserializeOwned>(path: &str, token: &st
         .await
         .map_err(|e| e.to_string())?;
     if !resp.ok() {
-        return Err("delete failed".into());
+        return Err(error_message(resp, true).await);
     }
     resp.json::<T>().await.map_err(|e| e.to_string())
 }
@@ -139,7 +185,7 @@ async fn delete_json<B: serde::Serialize>(path: &str, body: &B, token: &str) -> 
         .await
         .map_err(|e| e.to_string())?;
     if !resp.ok() {
-        return Err("delete failed".into());
+        return Err(error_message(resp, true).await);
     }
     Ok(())
 }
@@ -157,9 +203,7 @@ async fn put_unit<B: serde::Serialize>(path: &str, body: &B, token: &str) -> Res
         .await
         .map_err(|e| e.to_string())?;
     if !resp.ok() {
-        let err: shared::ErrorResponse = resp.json().await
-            .unwrap_or(shared::ErrorResponse { error: "unknown error".into() });
-        return Err(err.error);
+        return Err(error_message(resp, true).await);
     }
     Ok(())
 }
@@ -177,9 +221,7 @@ async fn post_unit<B: serde::Serialize>(path: &str, body: &B, token: &str) -> Re
         .await
         .map_err(|e| e.to_string())?;
     if !resp.ok() {
-        let err: shared::ErrorResponse = resp.json().await
-            .unwrap_or(shared::ErrorResponse { error: "unknown error".into() });
-        return Err(err.error);
+        return Err(error_message(resp, true).await);
     }
     Ok(())
 }

@@ -26,6 +26,9 @@ pub fn AnnouncementsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                     crate::cache::stash("announcements", &list);
                     Ok(list)
                 }
+                // A dead session is not staleness — falling back there would show
+                // a frozen feed to someone who is really just logged out.
+                Err(e) if api::is_session_expired(&e) => Err(e),
                 Err(e) => crate::cache::recall::<Vec<shared::Announcement>>("announcements")
                     .map(Ok)
                     .unwrap_or(Err(e)),

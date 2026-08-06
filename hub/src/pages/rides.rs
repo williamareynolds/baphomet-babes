@@ -405,6 +405,9 @@ pub fn RidesPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                     crate::cache::stash("rides", &list);
                     Ok(list)
                 }
+                // A dead session is not staleness — falling back there would show
+                // a frozen list to someone who is really just logged out.
+                Err(e) if api::is_session_expired(&e) => Err(e),
                 Err(e) => crate::cache::recall::<Vec<Ride>>("rides").map(Ok).unwrap_or(Err(e)),
             };
             rides.set(Some(result));

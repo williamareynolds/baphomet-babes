@@ -145,6 +145,7 @@ name = "auth-client"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "js-sys",
  "serde",
  "serde_json",
  "shared",

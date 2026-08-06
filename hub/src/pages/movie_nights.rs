@@ -63,6 +63,9 @@ pub fn MovieNightsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                     crate::cache::stash("events", &list);
                     Ok(list)
                 }
+                // A dead session is not staleness — falling back there would show
+                // a frozen schedule to someone who is really just logged out.
+                Err(e) if api::is_session_expired(&e) => Err(e),
                 Err(e) => crate::cache::recall::<Vec<shared::Event>>("events")
                     .map(Ok)
                     .unwrap_or(Err(e)),

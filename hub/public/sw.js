@@ -61,7 +61,8 @@ self.addEventListener("notificationclick", (event) => {
 // and the next fetch goes to network. v2: drop the pre-SVG Leaflet marker build.
 // v3: ride edit + free-text notes field.
 // v4: post-a-ride moved to a sticky bar + bottom sheet.
-const CACHE = "bb-shell-v4";
+// v5: expired-session handling — every client needs the new bundle to log out.
+const CACHE = "bb-shell-v5";
 const SHELL = ["/"];
 
 self.addEventListener("install", (event) => {

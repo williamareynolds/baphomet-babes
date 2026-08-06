@@ -1,5 +1,9 @@
 pub use shared::{AuthUser, CookieIdentity};
 
+mod jwt;
+
+pub use jwt::{exp_seconds, is_expired};
+
 #[cfg(target_arch = "wasm32")]
 mod wasm;
 

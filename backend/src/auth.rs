@@ -1,7 +1,9 @@
 use crate::{AppState, error::{AppError, AppResult}, models::UserDoc};
 use anyhow::Context;
 use axum::http::HeaderMap;
-use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
+use jsonwebtoken::{
+    Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode, errors::ErrorKind,
+};
 use serde::{Deserialize, Serialize};
 
 const USERS: &str = "users";
@@ -40,7 +42,17 @@ pub fn verify_token(token: &str, secret: &str) -> AppResult<Claims> {
         &Validation::new(Algorithm::HS256),
     )
     .map(|d| d.claims)
-    .map_err(|e| AppError::Auth(e.to_string()))
+    .map_err(|e| {
+        // jsonwebtoken's Display is its ErrorKind name ("ExpiredSignature",
+        // "InvalidSignature", …). That is debugging detail, not something to
+        // show a member — the client renders this string verbatim — and the
+        // exact reason a token failed is not worth telling a caller either.
+        tracing::debug!("token rejected: {e}");
+        match e.kind() {
+            ErrorKind::ExpiredSignature => AppError::Auth("session expired".into()),
+            _ => AppError::Auth("invalid session".into()),
+        }
+    })
 }
 
 /// Pure token check: extract the bearer token and verify its signature/expiry.
@@ -148,7 +160,18 @@ mod tests {
             &EncodingKey::from_secret(SECRET.as_bytes()),
         )
         .unwrap();
-        assert!(verify_token(&token, SECRET).is_err());
+        let err = verify_token(&token, SECRET).unwrap_err();
+        assert_eq!(err.to_string(), "session expired");
+    }
+
+    #[test]
+    fn rejection_messages_never_leak_the_jwt_error_kind() {
+        // The hub renders these strings straight into the page, so a member must
+        // never end up reading "ExpiredSignature" or "InvalidSignature".
+        let token = create_token("user-123", "member", SECRET).unwrap();
+        let err = verify_token(&token, "other-secret").unwrap_err();
+        assert_eq!(err.to_string(), "invalid session");
+        assert!(!err.to_string().contains("Signature"));
     }
 
     // Authorization (role gating, disabled/deleted-account revocation) is
