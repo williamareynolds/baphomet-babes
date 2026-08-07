@@ -211,6 +211,10 @@ jobs:
           docker push $IMAGE:${{ github.sha }}
           docker push $IMAGE:latest
 
+      # The "^##^" prefix picks the separator between env-var pairs. It must be
+      # a string that appears in none of the values: EMAIL_FROM is an address,
+      # so the old "@" separator split it mid-value and the deploy failed to
+      # parse. Check this before adding a var whose value could contain "#".
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy $SERVICE \
@@ -220,7 +224,7 @@ jobs:
             --allow-unauthenticated \
             --min-instances 0 \
             --max-instances 3 \
-            --set-env-vars "^@^GCP_PROJECT_ID=$PROJECT_ID@JWT_SECRET=${{ secrets.JWT_SECRET }}@SUPERADMIN_INVITE_CODE=${{ secrets.SUPERADMIN_INVITE_CODE }}@ALLOWED_ORIGINS=https://baphometbabes.com@FCM_ENABLE=true@RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}@EMAIL_FROM=${{ vars.EMAIL_FROM }}@REMINDER_SECRET=${{ secrets.REMINDER_SECRET }}@PUBLIC_BASE_URL=https://baphometbabes.com@RUST_LOG=info"
+            --set-env-vars "^##^GCP_PROJECT_ID=$PROJECT_ID##JWT_SECRET=${{ secrets.JWT_SECRET }}##SUPERADMIN_INVITE_CODE=${{ secrets.SUPERADMIN_INVITE_CODE }}##ALLOWED_ORIGINS=https://baphometbabes.com##FCM_ENABLE=true##RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}##EMAIL_FROM=${{ vars.EMAIL_FROM }}##REMINDER_SECRET=${{ secrets.REMINDER_SECRET }}##PUBLIC_BASE_URL=https://baphometbabes.com##RUST_LOG=info"
 
   deploy-hub:
     name: Deploy hub (Firebase Hosting)
