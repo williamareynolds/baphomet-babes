@@ -113,6 +113,39 @@ impl Event {
     }
 }
 
+/// Split the schedule into the headline "next feature" and the rest of the list.
+///
+/// The feature is the soonest dated screening today-or-later; with nothing
+/// dated, an undated pick — preferring one with an open poll — so an event
+/// mid-vote still headlines as "Date TBD".
+///
+/// The remainder leads with undated screenings, then dated ones newest-first.
+/// Undated means voting is still open, which is the only part of the list a
+/// member can act on; burying it under years of past screenings hides the one
+/// thing that needs them. The feature is removed from the remainder so it
+/// isn't rendered twice in a row.
+pub fn split_events(mut list: Vec<Event>, today: &str) -> (Option<Event>, Vec<Event>) {
+    list.sort_by(|a, b| a.date.cmp(&b.date));
+    let featured = list
+        .iter()
+        .find(|e| e.date.as_deref().is_some_and(|d| d >= today))
+        .or_else(|| list.iter().find(|e| e.date.is_none() && e.poll_embed_url.is_some()))
+        .or_else(|| list.iter().find(|e| e.date.is_none()))
+        .cloned();
+
+    if let Some(f) = &featured {
+        list.retain(|e| e.id != f.id);
+    }
+
+    // Stable sort, so undated screenings keep the order the backend sent them.
+    list.sort_by(|a, b| match (a.date.is_none(), b.date.is_none()) {
+        (true, false) => core::cmp::Ordering::Less,
+        (false, true) => core::cmp::Ordering::Greater,
+        _ => b.date.cmp(&a.date),
+    });
+    (featured, list)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateEventRequest {
     pub event_type: String,
@@ -606,6 +639,97 @@ pub struct ErrorResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn ev(id: &str, date: Option<&str>, poll: Option<&str>) -> Event {
+        Event {
+            id: id.into(),
+            event_type: "main".into(),
+            title: id.into(),
+            date: date.map(String::from),
+            description: None,
+            poll_embed_url: poll.map(String::from),
+            poster_url: None,
+            rsvp_deadline: None,
+            poll_deadline: None,
+            rsvp_count: 0,
+            my_rsvp: false,
+        }
+    }
+
+    fn ids(list: &[Event]) -> Vec<&str> {
+        list.iter().map(|e| e.id.as_str()).collect()
+    }
+
+    const TODAY: &str = "2026-08-07";
+
+    #[test]
+    fn features_the_soonest_upcoming_screening() {
+        let (f, _) = split_events(
+            vec![
+                ev("far", Some("2026-12-01"), None),
+                ev("soon", Some("2026-08-20"), None),
+                ev("past", Some("2026-01-01"), None),
+            ],
+            TODAY,
+        );
+        assert_eq!(f.unwrap().id, "soon");
+    }
+
+    #[test]
+    fn features_today() {
+        let (f, _) = split_events(vec![ev("today", Some(TODAY), None)], TODAY);
+        assert_eq!(f.unwrap().id, "today");
+    }
+
+    #[test]
+    fn falls_back_to_the_event_being_voted_on() {
+        // Nothing dated ahead, so the poll in progress headlines instead of a
+        // past screening.
+        let (f, _) = split_events(
+            vec![
+                ev("past", Some("2026-01-01"), None),
+                ev("planned", None, None),
+                ev("voting", None, Some("https://rcv123.org/p/1")),
+            ],
+            TODAY,
+        );
+        assert_eq!(f.unwrap().id, "voting");
+    }
+
+    #[test]
+    fn the_feature_is_not_repeated_in_the_list() {
+        let (f, rest) = split_events(
+            vec![ev("soon", Some("2026-08-20"), None), ev("past", Some("2026-01-01"), None)],
+            TODAY,
+        );
+        assert_eq!(f.unwrap().id, "soon");
+        assert_eq!(ids(&rest), ["past"]);
+    }
+
+    #[test]
+    fn undated_screenings_lead_the_list() {
+        // "voting" headlines; the other undated entries come before every dated
+        // one, which are then newest-first.
+        let (f, rest) = split_events(
+            vec![
+                ev("old", Some("2026-01-01"), None),
+                ev("undated_a", None, None),
+                ev("voting", None, Some("https://rcv123.org/p/1")),
+                ev("recent", Some("2026-06-01"), None),
+                ev("undated_b", None, None),
+            ],
+            TODAY,
+        );
+        assert_eq!(f.unwrap().id, "voting");
+        assert_eq!(ids(&rest), ["undated_a", "undated_b", "recent", "old"]);
+    }
+
+    #[test]
+    fn an_empty_schedule_features_nothing() {
+        let (f, rest) = split_events(vec![], TODAY);
+        assert!(f.is_none());
+        assert!(rest.is_empty());
+    }
 
     #[test]
     fn email_defaults_to_movie_night_only() {

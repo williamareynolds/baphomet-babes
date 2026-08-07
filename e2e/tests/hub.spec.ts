@@ -167,10 +167,52 @@ test("movie nights features the next screening and dates it nicely", async ({
   await expect(hero.locator(".feature-title")).toHaveText("The Crow (1994)");
   await expect(hero.locator(".feature-date")).toHaveText("October 31, 2030");
 
-  // The featured screening also appears in the full archive list below.
+  // The hero is NOT repeated in the archive below it — it already headlines.
   await expect(
     page.locator(".mn-row").filter({ hasText: "The Crow (1994)" }),
-  ).toBeVisible();
+  ).toHaveCount(0);
+});
+
+test("a poll's voting deadline is public, and undated films lead the list", async ({
+  page,
+}) => {
+  await login(page);
+  await page.goto("/admin/events");
+
+  // An undated film with an open poll and a voting cutoff. The schedule
+  // disclosure stays shut, so the only date input on the form is "Voting
+  // closes" — the cutoff is deliberately not tied to having a screening date.
+  await page.getByPlaceholder("Movie title").fill("Nosferatu");
+  await page
+    .getByPlaceholder("https://rcv123.org/poll/...")
+    .fill("https://rcv123.org/poll/e2e");
+  await page.locator('input[type="date"]').first().fill("2030-09-15");
+  await page.getByRole("button", { name: "Create Event" }).click();
+  await expect(page.locator(".success")).toHaveText("Event created!");
+
+  await page.goto("/movie-nights");
+
+  // The Crow is dated and upcoming, so it still headlines; Nosferatu is
+  // undated and therefore leads the list rather than sinking below it.
+  await expect(page.locator(".next-feature .feature-title")).toHaveText(
+    "The Crow (1994)",
+  );
+  const rows = page.locator(".mn-row");
+  await expect(rows.first()).toContainText("Nosferatu");
+
+  // The cutoff is visible to members, who otherwise can't see it without
+  // opening the rcv123 poll itself.
+  await expect(rows.first().locator(".mn-deadline")).toHaveText(
+    "Voting closes September 15, 2030",
+  );
+
+  // Clean up so later serial tests see the original single-event schedule.
+  await page.goto("/admin/events");
+  const card = page.locator(".thaw-card").filter({ hasText: "Nosferatu" });
+  await card.getByRole("button", { name: "Delete" }).click();
+  await expect(
+    page.locator(".thaw-card").filter({ hasText: "Nosferatu" }),
+  ).toHaveCount(0);
 });
 
 test("a member can RSVP and admins see who's going", async ({ page }) => {

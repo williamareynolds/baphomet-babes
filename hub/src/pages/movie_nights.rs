@@ -30,23 +30,6 @@ fn pretty_date(d: &str) -> String {
     }
 }
 
-/// Pick the featured "next" screening and return
-/// the full screening list in reverse-chronological order. The featured event is
-/// the soonest dated screening today-or-later; if none is dated yet, fall back to
-/// a planned (undated) pick — preferring one with an open poll — so an event being
-/// voted on still headlines as "Date TBD".
-fn split_events(mut list: Vec<shared::Event>, today: &str) -> (Option<shared::Event>, Vec<shared::Event>) {
-    list.sort_by(|a, b| a.date.cmp(&b.date));
-    let featured = list
-        .iter()
-        .find(|e| e.date.as_deref().is_some_and(|d| d >= today))
-        .or_else(|| list.iter().find(|e| e.date.is_none() && e.poll_embed_url.is_some()))
-        .or_else(|| list.iter().find(|e| e.date.is_none()))
-        .cloned();
-    list.sort_by(|a, b| b.date.cmp(&a.date));
-    (featured, list)
-}
-
 #[component]
 pub fn MovieNightsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let events: RwSignal<Option<Result<Vec<shared::Event>, String>>> = RwSignal::new(None);
@@ -87,7 +70,7 @@ pub fn MovieNightsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
         let today = today.clone();
         Signal::derive(move || match events.get() {
             Some(Ok(list)) => {
-                let (_, rest) = split_events(list, &today);
+                let (_, rest) = shared::split_events(list, &today);
                 rest.len().div_ceil(PER_PAGE).max(1)
             }
             _ => 1,
@@ -110,7 +93,10 @@ pub fn MovieNightsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                 None => view! { <p>"Loading…"</p> }.into_any(),
                 Some(Err(e)) => view! { <p class="error">{e}</p> }.into_any(),
                 Some(Ok(list)) => {
-                    let (featured, rest) = split_events(list, &today);
+                    let (featured, rest) = shared::split_events(list, &today);
+                    // Separate handle for the row closures: the hero below takes
+                    // `today` into its own branch.
+                    let today_row = today.clone();
                     let total = rest.len().div_ceil(PER_PAGE).max(1);
                     let cur = page.get().min(total - 1);
                     let slice: Vec<_> = rest
@@ -136,6 +122,17 @@ pub fn MovieNightsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                 // Until the poll picks a date there's nothing to RSVP to,
                                 // so a "3 going" count would be meaningless — hide it.
                                 let dated = f.date.is_some();
+                                // Voting deadlines are set on our side, mirroring
+                                // whatever the rcv123 poll says. Members can't see
+                                // that poll's settings without opening it, so this
+                                // is the only place the cutoff is visible.
+                                let deadline_label = f.poll_deadline.clone()
+                                    .filter(|_| voting_open)
+                                    .map(|d| if d.as_str() < today.as_str() {
+                                        format!("Voting closed {}", pretty_date(&d))
+                                    } else {
+                                        format!("Voting closes {}", pretty_date(&d))
+                                    });
                                 let date_label = f.date.clone().map(|d| pretty_date(&d))
                                     .unwrap_or_else(|| if voting_open {
                                         "Voting open — help pick the date".to_string()
@@ -156,6 +153,9 @@ pub fn MovieNightsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                             </span>
                                             <h2 class="feature-title">{f.title}</h2>
                                             <p class="feature-date">{date_label}</p>
+                                            {deadline_label.map(|l| view! {
+                                                <p class="feature-deadline">{l}</p>
+                                            })}
                                             {f.description.map(|d| view! {
                                                 <p class="feature-desc">{d}</p>
                                             })}
@@ -188,6 +188,13 @@ pub fn MovieNightsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                     {slice.into_iter().map(|e| {
                                         let rsvp_event = e.clone();
                                         let dated = e.date.is_some();
+                                        let row_deadline = e.poll_deadline.clone()
+                                            .filter(|_| !dated)
+                                            .map(|d| if d.as_str() < today_row.as_str() {
+                                                format!("Voting closed {}", pretty_date(&d))
+                                            } else {
+                                                format!("Voting closes {}", pretty_date(&d))
+                                            });
                                         view! {
                                         <Card>
                                             <div class="mn-row">
@@ -201,6 +208,9 @@ pub fn MovieNightsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                                     <h3 class="mn-title">{e.title}</h3>
                                                     {e.date.as_deref().map(|d| view! {
                                                         <p class="mn-date">{pretty_date(d)}</p>
+                                                    })}
+                                                    {row_deadline.map(|l| view! {
+                                                        <p class="mn-deadline">{l}</p>
                                                     })}
                                                     {e.description.map(|d| view! {
                                                         <p class="mn-desc">{d}</p>
