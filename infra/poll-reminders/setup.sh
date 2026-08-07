@@ -34,13 +34,16 @@ echo "==> Enabling APIs"
 gcloud services enable cloudscheduler.googleapis.com --project "$PROJECT"
 
 # create-or-update: `create` fails if the job exists, so fall back to `update`.
+# Plain strings rather than ${ACTION^} — macOS ships bash 3.2, which has no
+# case-modifying parameter expansion and aborts the script with "bad
+# substitution" under `set -e`.
 if gcloud scheduler jobs describe "$JOB" --location "$REGION" --project "$PROJECT" >/dev/null 2>&1; then
   ACTION="update"
+  echo "==> Job '$JOB' exists; updating it"
 else
   ACTION="create"
+  echo "==> Creating Cloud Scheduler job '$JOB'"
 fi
-
-echo "==> ${ACTION^}ing Cloud Scheduler job '$JOB'"
 gcloud scheduler jobs "$ACTION" http "$JOB" \
   --location "$REGION" \
   --project "$PROJECT" \
