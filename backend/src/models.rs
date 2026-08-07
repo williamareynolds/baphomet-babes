@@ -49,6 +49,14 @@ pub struct EventDoc {
     /// Optional RSVP cutoff date ("YYYY-MM-DD"). None = RSVPs never close.
     #[serde(default)]
     pub rsvp_deadline: Option<String>,
+    /// Optional voting cutoff ("YYYY-MM-DD") the reminder job nudges against.
+    #[serde(default)]
+    pub poll_deadline: Option<String>,
+    /// Unix seconds when the closing-soon reminder went out, so a job that runs
+    /// daily sends it once rather than every day until the poll closes. 0 =
+    /// never sent.
+    #[serde(default)]
+    pub poll_reminder_sent_at: i64,
     pub created_at: i64,
 }
 
@@ -144,6 +152,21 @@ pub struct NotifPrefsDoc {
     /// before this unix-seconds time. "Clear" sets it to now. 0 = never cleared.
     #[serde(default)]
     pub cleared_at: i64,
+    // ---- email delivery, per channel ----
+    //
+    // Stored flat rather than as a nested map so the doc stays queryable and
+    // matches the shape of the push flags above; the API type nests them under
+    // `email` for the UI's benefit. Every flag defaults off except movie night,
+    // so members written before email existed are opted into the vote nudge and
+    // nothing else.
+    #[serde(default)]
+    pub email_announcements: bool,
+    #[serde(default)]
+    pub email_general: bool,
+    #[serde(default = "default_true")]
+    pub email_movie_night: bool,
+    #[serde(default)]
+    pub email_mountain_bike: bool,
 }
 
 /// Per-user calendar subscription token. Doc id is the user id, so regenerating
@@ -151,6 +174,17 @@ pub struct NotifPrefsDoc {
 /// looks up by the `token` field).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CalendarTokenDoc {
+    pub user_id: String,
+    pub token: String,
+    pub created_at: i64,
+}
+
+/// Per-user unsubscribe token, same capability-URL shape as the calendar token
+/// above: doc id is the user id, lookup is by the `token` field. Deliberately
+/// separate from the calendar token so a link forwarded out of someone's inbox
+/// can only turn email off — it can't also expose their event feed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmailTokenDoc {
     pub user_id: String,
     pub token: String,
     pub created_at: i64,

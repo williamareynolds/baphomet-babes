@@ -139,10 +139,14 @@ pub async fn middleware(
     // The public calendar feed (*.ics) is fetched by Google/iCloud/Outlook with
     // no App Check token — it's authorized by the secret token in its path — so
     // it must bypass enforcement. Other /calendar routes stay gated.
+    // Unsubscribe links are opened straight from a mail client — often on a
+    // device that has never loaded the hub, so there is no App Check token to
+    // send. Like the calendar feed, the secret in the path is the credential.
     let path = req.uri().path();
     if req.method() == Method::OPTIONS
         || path == "/health"
         || (path.starts_with("/calendar/") && path.ends_with(".ics"))
+        || path.starts_with("/email/unsubscribe/")
     {
         return next.run(req).await;
     }

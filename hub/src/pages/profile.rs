@@ -55,6 +55,12 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let ch_chat = RwSignal::new(false); // chat is opt-in
     let ch_mtb = RwSignal::new(false); // mountain bike is opt-in
     let ch_test = RwSignal::new(true); // admin-only test channel
+    // Email delivery, per channel. Movie night defaults on (it's the one that
+    // needs votes); the rest are opt-in so the club's mail stays rare.
+    let em_announce = RwSignal::new(false);
+    let em_general = RwSignal::new(false);
+    let em_movie = RwSignal::new(true);
+    let em_mtb = RwSignal::new(false);
     let notif_msg = RwSignal::new(String::new());
     let is_admin = move || auth.get().map(|u| u.is_admin()).unwrap_or(false);
 
@@ -69,6 +75,10 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                     ch_chat.set(p.chat);
                     ch_mtb.set(p.mountain_bike);
                     ch_test.set(p.test);
+                    em_announce.set(p.email.announcements);
+                    em_general.set(p.email.general);
+                    em_movie.set(p.email.movie_night);
+                    em_mtb.set(p.email.mountain_bike);
                 }
             });
         }
@@ -121,6 +131,12 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
             chat: Some(ch_chat.get()),
             mountain_bike: Some(ch_mtb.get()),
             test: Some(ch_test.get()),
+            email: Some(shared::UpdateEmailPrefs {
+                announcements: Some(em_announce.get()),
+                general: Some(em_general.get()),
+                movie_night: Some(em_movie.get()),
+                mountain_bike: Some(em_mtb.get()),
+            }),
         };
         wasm_bindgen_futures::spawn_local(async move {
             match api::update_notif_prefs(req, &user.token).await {
@@ -281,7 +297,7 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                     <p style="font-family:'IBM Plex Mono',monospace;font-size:0.6rem;letter-spacing:0.1em;text-transform:uppercase;color:#ad9ea4;margin:1.25rem 0 0.5rem;">
                         "Channels"
                     </p>
-                    <div style="display:flex;flex-direction:column;gap:0.6rem;">
+                    <div class="notif-channels" style="display:flex;flex-direction:column;gap:0.6rem;">
                         <Switch checked=ch_announce label="Announcements" />
                         <Switch checked=ch_general label="General" />
                         <Switch checked=ch_movie label="Movie Nights" />
@@ -290,6 +306,19 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                         <Show when=is_admin>
                             <Switch checked=ch_test label="Test Messages (admins only)" />
                         </Show>
+                    </div>
+
+                    <p style="font-family:'IBM Plex Mono',monospace;font-size:0.6rem;letter-spacing:0.1em;text-transform:uppercase;color:#ad9ea4;margin:1.25rem 0 0.5rem;">
+                        "Email"
+                    </p>
+                    <p style="font-size:0.8rem;color:#ad9ea4;margin:0 0 0.6rem;">
+                        "Sent to your account email. Separate from push — turn either on, or both."
+                    </p>
+                    <div class="email-channels" style="display:flex;flex-direction:column;gap:0.6rem;">
+                        <Switch checked=em_movie label="Movie Nights & voting" />
+                        <Switch checked=em_announce label="Announcements" />
+                        <Switch checked=em_general label="General" />
+                        <Switch checked=em_mtb label="Mountain Bike Rides" />
                     </div>
 
                     <Show when=move || !notif_msg.get().is_empty()>

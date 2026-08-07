@@ -56,6 +56,7 @@ pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let title = RwSignal::new(String::new());
     let date = RwSignal::new(String::new());
     let rsvp_deadline = RwSignal::new(String::new());
+    let poll_deadline = RwSignal::new(String::new());
     let event_type = RwSignal::new("main".to_string());
     let description = RwSignal::new(String::new());
     let poll_url = RwSignal::new(String::new());
@@ -97,6 +98,9 @@ pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
             poll_embed_url: if poll_url.get().is_empty() { None } else { Some(poll_url.get()) },
             poster_url: if poster_url.get().is_empty() { None } else { Some(poster_url.get()) },
             rsvp_deadline: Some(rsvp_deadline.get()).filter(|d| scheduled && !d.is_empty()),
+            // Unlike the RSVP deadline this is not tied to the schedule toggle:
+            // voting closes before a date exists, which is the whole point.
+            poll_deadline: Some(poll_deadline.get()).filter(|d| !d.is_empty()),
         };
         wasm_bindgen_futures::spawn_local(async move {
             match api::create_event(req, &user.token).await {
@@ -105,6 +109,7 @@ pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                     title.set(String::new());
                     date.set(String::new());
                     rsvp_deadline.set(String::new());
+                    poll_deadline.set(String::new());
                     description.set(String::new());
                     poll_url.set(String::new());
                     poster_url.set(String::new());
@@ -199,6 +204,7 @@ pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let edit_title = RwSignal::new(String::new());
     let edit_date = RwSignal::new(String::new());
     let edit_rsvp_deadline = RwSignal::new(String::new());
+    let edit_poll_deadline = RwSignal::new(String::new());
     let edit_type = RwSignal::new(String::new());
     let edit_description = RwSignal::new(String::new());
     let edit_poll_url = RwSignal::new(String::new());
@@ -209,6 +215,7 @@ pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
         edit_title.set(e.title.clone());
         edit_date.set(e.date.clone().unwrap_or_default());
         edit_rsvp_deadline.set(e.rsvp_deadline.clone().unwrap_or_default());
+        edit_poll_deadline.set(e.poll_deadline.clone().unwrap_or_default());
         edit_type.set(e.event_type.clone());
         edit_description.set(e.description.clone().unwrap_or_default());
         edit_poll_url.set(e.poll_embed_url.clone().unwrap_or_default());
@@ -227,6 +234,7 @@ pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
             title: Some(edit_title.get()),
             date: Some(edit_date.get()),
             rsvp_deadline: Some(edit_rsvp_deadline.get()),
+            poll_deadline: Some(edit_poll_deadline.get()),
             description: if edit_description.get().is_empty() { None } else { Some(edit_description.get()) },
             poll_embed_url: if edit_poll_url.get().is_empty() { None } else { Some(edit_poll_url.get()) },
             poster_url: if edit_poster_url.get().is_empty() { None } else { Some(edit_poster_url.get()) },
@@ -295,6 +303,9 @@ pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                 <Input value=rsvp_deadline input_type=InputType::Date />
                             </Field>
                         </Show>
+                        <Field label="Voting closes (optional)">
+                            <Input value=poll_deadline input_type=InputType::Date />
+                        </Field>
 
                         <Show when=move || !form_error.get().is_empty()>
                             <p class="error">{move || form_error.get()}</p>
@@ -341,6 +352,9 @@ pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                                         </Field>
                                                         <Field label="RSVP deadline (optional)">
                                                             <Input value=edit_rsvp_deadline input_type=InputType::Date />
+                                                        </Field>
+                                                        <Field label="Voting closes (optional)">
+                                                            <Input value=edit_poll_deadline input_type=InputType::Date />
                                                         </Field>
                                                         <Field label="Description (optional)">
                                                             <Textarea value=edit_description />

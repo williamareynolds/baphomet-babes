@@ -202,7 +202,21 @@ async fn load_prefs(state: &AppState, user_id: &str) -> anyhow::Result<NotifPref
         mountain_bike: false,
         test: true,
         cleared_at: 0,
+        email_announcements: false,
+        email_general: false,
+        email_movie_night: true,
+        email_mountain_bike: false,
     }))
+}
+
+/// The stored flags as the API's nested shape.
+fn email_prefs(p: &NotifPrefsDoc) -> shared::EmailPrefs {
+    shared::EmailPrefs {
+        announcements: p.email_announcements,
+        general: p.email_general,
+        movie_night: p.email_movie_night,
+        mountain_bike: p.email_mountain_bike,
+    }
 }
 
 async fn get_prefs(
@@ -218,6 +232,7 @@ async fn get_prefs(
         chat: p.chat,
         mountain_bike: p.mountain_bike,
         test: p.test,
+        email: email_prefs(&p),
     }))
 }
 
@@ -229,6 +244,9 @@ async fn update_prefs(
     let claims = require_auth(&state, &headers).await?;
     let existing = load_prefs(&state, &claims.sub).await?;
 
+    // Email flags arrive nested and partial: an absent `email` object leaves
+    // every email setting alone, exactly like an absent push flag does.
+    let e = req.email.unwrap_or_default();
     let updated = NotifPrefsDoc {
         user_id: claims.sub.clone(),
         announcements: req.announcements.unwrap_or(existing.announcements),
@@ -238,6 +256,10 @@ async fn update_prefs(
         mountain_bike: req.mountain_bike.unwrap_or(existing.mountain_bike),
         test: req.test.unwrap_or(existing.test),
         cleared_at: existing.cleared_at,
+        email_announcements: e.announcements.unwrap_or(existing.email_announcements),
+        email_general: e.general.unwrap_or(existing.email_general),
+        email_movie_night: e.movie_night.unwrap_or(existing.email_movie_night),
+        email_mountain_bike: e.mountain_bike.unwrap_or(existing.email_mountain_bike),
     };
 
     let _: NotifPrefsDoc = state.db
@@ -257,6 +279,7 @@ async fn update_prefs(
         chat: updated.chat,
         mountain_bike: updated.mountain_bike,
         test: updated.test,
+        email: email_prefs(&updated),
     }))
 }
 
@@ -397,7 +420,146 @@ pub async fn dispatch(
             }
         });
     }
+
+    // Email rides alongside push rather than instead of it: the two have
+    // separate per-channel preferences, so a member can take a channel by
+    // either, both, or neither. Backgrounded and best-effort for the same
+    // reason push is — a slow mail API must not fail the action that triggered
+    // the notification.
+    if state.email.is_some() {
+        let state = state.clone();
+        let channel = channel.to_string();
+        let title = title.to_string();
+        let body = body.to_string();
+        let url = url.map(|s| s.to_string());
+        let exclude_user = exclude_user.map(|s| s.to_string());
+        tokio::spawn(async move {
+            if let Err(e) = email_fanout(&state, &channel, &title, &body, url.as_deref(), exclude_user.as_deref()).await {
+                tracing::warn!("email fanout failed: {e:#}");
+            }
+        });
+    }
     Ok(())
+}
+
+/// Email `channel`'s notification to every member who wants that channel by
+/// mail. Each message carries its own unsubscribe link, so this sends one
+/// request per recipient.
+pub(crate) async fn email_fanout(
+    state: &AppState,
+    channel: &str,
+    title: &str,
+    body: &str,
+    url: Option<&str>,
+    exclude_user: Option<&str>,
+) -> anyhow::Result<()> {
+    let Some(email) = &state.email else { return Ok(()) };
+
+    let users: Vec<UserDoc> = state.db
+        .fluent()
+        .select()
+        .from("users")
+        .obj()
+        .query()
+        .await
+        .context("failed to load users for email fanout")?;
+
+    let prefs: Vec<NotifPrefsDoc> = state.db
+        .fluent()
+        .select()
+        .from(NOTIF_PREFS)
+        .obj()
+        .query()
+        .await
+        .context("failed to load notif prefs for email fanout")?;
+    let prefs: HashMap<String, NotifPrefsDoc> =
+        prefs.into_iter().map(|p| (p.user_id.clone(), p)).collect();
+
+    let (mut sent, mut rejected, mut failed) = (0usize, 0usize, 0usize);
+    for u in users {
+        if u.disabled || u.email.is_empty() {
+            continue;
+        }
+        if exclude_user == Some(u.id.as_str()) {
+            continue;
+        }
+        // No prefs doc means defaults, which is how a member who has never
+        // touched settings still gets the movie-night nudge.
+        let wanted = prefs
+            .get(&u.id)
+            .map(|p| shared::EmailPrefs {
+                announcements: p.email_announcements,
+                general: p.email_general,
+                movie_night: p.email_movie_night,
+                mountain_bike: p.email_mountain_bike,
+            })
+            .unwrap_or_default();
+        if !wanted.allows(channel) {
+            continue;
+        }
+
+        let token = match crate::routes::email::token_for(state, &u.id).await {
+            Ok(t) => t,
+            Err(e) => {
+                tracing::warn!("no unsubscribe token for {}: {e:#}", u.id);
+                failed += 1;
+                continue;
+            }
+        };
+        let unsub = crate::routes::email::unsubscribe_url(&state.public_base_url, &token, channel);
+        let (html, text) = render(&state.public_base_url, title, body, url, &unsub);
+
+        match email.send(&u.email, title, &html, &text, Some(&unsub)).await {
+            Ok(crate::email::SendOutcome::Sent) => sent += 1,
+            Ok(crate::email::SendOutcome::Rejected(why)) => {
+                rejected += 1;
+                tracing::warn!("email rejected for {}: {why}", u.id);
+            }
+            Err(e) => {
+                failed += 1;
+                tracing::warn!("email send error: {e:#}");
+            }
+        }
+    }
+    tracing::info!("email fanout channel={channel} sent={sent} rejected={rejected} failed={failed}");
+    Ok(())
+}
+
+/// Render one notification as (html, text).
+///
+/// `url` is a hub-relative path on the notification (e.g. `/movie-nights`);
+/// mail needs it absolute, so it's joined onto the public base URL here.
+pub(crate) fn render(
+    base_url: &str,
+    title: &str,
+    body: &str,
+    url: Option<&str>,
+    unsubscribe_url: &str,
+) -> (String, String) {
+    let base = base_url.trim_end_matches('/');
+    let link = url.map(|u| format!("{base}{u}")).unwrap_or_else(|| base.to_string());
+
+    let html = format!(
+        r#"<!doctype html><html><body style="margin:0;padding:0;background:#12090c;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#12090c;padding:24px 12px;">
+<tr><td align="center">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#1b1013;border-radius:8px;padding:28px;">
+  <tr><td style="font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:3px;text-transform:uppercase;color:#c41e3a;padding-bottom:18px;">Baphomet Babes</td></tr>
+  <tr><td style="font-family:Georgia,serif;font-size:21px;color:#f3e9ec;padding-bottom:10px;">{title}</td></tr>
+  <tr><td style="font-family:Georgia,serif;font-size:15px;line-height:1.6;color:#d8c9ce;padding-bottom:22px;">{body}</td></tr>
+  <tr><td><a href="{link}" style="display:inline-block;background:#c41e3a;color:#ffffff;text-decoration:none;font-family:Georgia,serif;font-size:15px;padding:11px 22px;border-radius:4px;">Open the app</a></td></tr>
+  <tr><td style="font-family:Georgia,serif;font-size:12px;color:#7d6d72;padding-top:26px;">
+    <a href="{unsubscribe_url}" style="color:#7d6d72;">Unsubscribe from these emails</a>
+  </td></tr>
+</table>
+</td></tr></table></body></html>"#
+    );
+
+    let text = format!(
+        "{title}\n\n{body}\n\n{link}\n\n—\nUnsubscribe: {unsubscribe_url}\n"
+    );
+
+    (html, text)
 }
 
 /// Push a notification to subscribed devices WITHOUT persisting it to the inbox.
@@ -606,4 +768,53 @@ async fn fanout(
         "push fanout channel={channel} tokens={total} sent={sent} stale={stale} failed={failed} skipped={skipped}"
     );
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const BASE: &str = "https://baphometbabes.com";
+    const UNSUB: &str = "https://baphometbabes.com/email/unsubscribe/abc123?channel=movie_night";
+
+    #[test]
+    fn render_makes_the_deep_link_absolute() {
+        // The notification carries a hub-relative path; an inbox can't resolve
+        // that, so it has to be joined onto the public base URL.
+        let (html, text) = render(BASE, "Last call to vote", "Voting closes Friday.", Some("/movie-nights"), UNSUB);
+        assert!(html.contains("https://baphometbabes.com/movie-nights"), "{html}");
+        assert!(text.contains("https://baphometbabes.com/movie-nights"), "{text}");
+    }
+
+    #[test]
+    fn render_falls_back_to_the_site_root_without_a_path() {
+        let (html, text) = render(BASE, "Title", "Body", None, UNSUB);
+        assert!(html.contains(r#"href="https://baphometbabes.com""#), "{html}");
+        assert!(text.contains("https://baphometbabes.com"), "{text}");
+    }
+
+    #[test]
+    fn render_tolerates_a_trailing_slash_on_the_base() {
+        // Otherwise the link comes out as ".com//movie-nights".
+        let (html, _) = render("https://baphometbabes.com/", "T", "B", Some("/movie-nights"), UNSUB);
+        assert!(html.contains("https://baphometbabes.com/movie-nights"), "{html}");
+        assert!(!html.contains(".com//movie-nights"), "{html}");
+    }
+
+    #[test]
+    fn render_carries_the_unsubscribe_link_in_both_parts() {
+        // A member reading the plain-text alternative still needs a way out.
+        let (html, text) = render(BASE, "Title", "Body", Some("/x"), UNSUB);
+        assert!(html.contains(UNSUB), "{html}");
+        assert!(text.contains(UNSUB), "{text}");
+    }
+
+    #[test]
+    fn render_includes_title_and_body() {
+        let (html, text) = render(BASE, "Last call to vote", "Voting closes Friday.", None, UNSUB);
+        for part in [&html, &text] {
+            assert!(part.contains("Last call to vote"), "{part}");
+            assert!(part.contains("Voting closes Friday."), "{part}");
+        }
+    }
 }

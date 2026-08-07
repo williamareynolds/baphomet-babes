@@ -78,6 +78,11 @@ pub struct Event {
     /// Optional RSVP cutoff date ("YYYY-MM-DD"). None = RSVPs never close.
     #[serde(default)]
     pub rsvp_deadline: Option<String>,
+    /// Optional voting cutoff ("YYYY-MM-DD"). Nothing enforces it — the poll
+    /// lives on rcv123 — but it gives the reminder job a date to nudge against,
+    /// which is the whole point of collecting it.
+    #[serde(default)]
+    pub poll_deadline: Option<String>,
     /// How many members have RSVP'd "going". Computed per request, not stored.
     #[serde(default)]
     pub rsvp_count: i64,
@@ -119,6 +124,8 @@ pub struct CreateEventRequest {
     pub poster_url: Option<String>,
     #[serde(default)]
     pub rsvp_deadline: Option<String>,
+    #[serde(default)]
+    pub poll_deadline: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -130,6 +137,7 @@ pub struct UpdateEventRequest {
     pub poll_embed_url: Option<String>,
     pub poster_url: Option<String>,
     pub rsvp_deadline: Option<String>,
+    pub poll_deadline: Option<String>,
 }
 
 /// Member's RSVP action for an event: going (true) or cancel (false).
@@ -441,6 +449,10 @@ pub struct NotificationPrefs {
     /// to admins/superadmins regardless of what's stored here.
     #[serde(default = "default_true")]
     pub test: bool,
+    /// Email delivery, per channel. Independent of the push flags above: a
+    /// member can take movie night by email only, push only, or both.
+    #[serde(default)]
+    pub email: EmailPrefs,
 }
 
 fn default_true() -> bool {
@@ -459,6 +471,7 @@ impl Default for NotificationPrefs {
             chat: false,
             mountain_bike: false,
             test: true,
+            email: EmailPrefs::default(),
         }
     }
 }
@@ -472,6 +485,59 @@ pub struct UpdateNotificationPrefs {
     pub mountain_bike: Option<bool>,
     #[serde(default)]
     pub test: Option<bool>,
+    #[serde(default)]
+    pub email: Option<UpdateEmailPrefs>,
+}
+
+/// Per-channel *email* delivery, parallel to the push flags above.
+///
+/// Only movie night is on by default. Email is the loud channel — it reaches
+/// people who never installed the PWA or turned push on, which is the whole
+/// point, but a club that emails about everything gets filtered. Members opt
+/// into the rest themselves.
+///
+/// Chat has no entry on purpose: it delivers via `push_only` and never reaches
+/// the email fan-out, because per-message email would be unusable.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct EmailPrefs {
+    pub announcements: bool,
+    pub general: bool,
+    pub movie_night: bool,
+    pub mountain_bike: bool,
+}
+
+impl Default for EmailPrefs {
+    fn default() -> Self {
+        EmailPrefs {
+            announcements: false,
+            general: false,
+            movie_night: true,
+            mountain_bike: false,
+        }
+    }
+}
+
+impl EmailPrefs {
+    /// Whether this member wants email for `channel`. Unknown channels — chat,
+    /// the admin test channel, anything added later — are false: a new channel
+    /// has to opt itself into email explicitly rather than inheriting it.
+    pub fn allows(&self, channel: &str) -> bool {
+        match channel {
+            CHANNEL_ANNOUNCEMENTS => self.announcements,
+            CHANNEL_GENERAL => self.general,
+            CHANNEL_MOVIE_NIGHT => self.movie_night,
+            CHANNEL_MOUNTAIN_BIKE => self.mountain_bike,
+            _ => false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct UpdateEmailPrefs {
+    pub announcements: Option<bool>,
+    pub general: Option<bool>,
+    pub movie_night: Option<bool>,
+    pub mountain_bike: Option<bool>,
 }
 
 /// Register (or refresh) an FCM device token for the current user.
@@ -541,6 +607,36 @@ pub struct ErrorResponse {
 mod tests {
     use super::*;
 
+    #[test]
+    fn email_defaults_to_movie_night_only() {
+        // The turnout channel is on; everything else is opt-in so club mail
+        // stays rare enough to get opened.
+        let p = EmailPrefs::default();
+        assert!(p.movie_night);
+        assert!(!p.announcements);
+        assert!(!p.general);
+        assert!(!p.mountain_bike);
+    }
+
+    #[test]
+    fn email_allows_maps_channels_to_flags() {
+        let p = EmailPrefs { announcements: true, general: false, movie_night: true, mountain_bike: false };
+        assert!(p.allows(CHANNEL_ANNOUNCEMENTS));
+        assert!(p.allows(CHANNEL_MOVIE_NIGHT));
+        assert!(!p.allows(CHANNEL_GENERAL));
+        assert!(!p.allows(CHANNEL_MOUNTAIN_BIKE));
+    }
+
+    #[test]
+    fn email_never_allows_chat_or_unknown_channels() {
+        // Chat delivers via push_only and must never reach the email fan-out;
+        // a channel added later has to opt in explicitly rather than inherit.
+        let p = EmailPrefs { announcements: true, general: true, movie_night: true, mountain_bike: true };
+        assert!(!p.allows(CHANNEL_CHAT));
+        assert!(!p.allows(CHANNEL_TEST));
+        assert!(!p.allows("something_new"));
+    }
+
     fn event(date: Option<&str>, poll: Option<&str>) -> Event {
         Event {
             id: "e1".into(),
@@ -550,6 +646,7 @@ mod tests {
             description: None,
             poll_embed_url: poll.map(String::from),
             poster_url: None,
+            poll_deadline: None,
             rsvp_deadline: None,
             rsvp_count: 0,
             my_rsvp: false,

@@ -62,7 +62,8 @@ self.addEventListener("notificationclick", (event) => {
 // v3: ride edit + free-text notes field.
 // v4: post-a-ride moved to a sticky bar + bottom sheet.
 // v5: expired-session handling — every client needs the new bundle to log out.
-const CACHE = "bb-shell-v5";
+// v6: email preference toggles + the voting-closes date on admin events.
+const CACHE = "bb-shell-v6";
 const SHELL = ["/"];
 
 self.addEventListener("install", (event) => {

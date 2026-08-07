@@ -1,5 +1,6 @@
 pub mod app_check;
 pub mod auth;
+pub mod email;
 pub mod error;
 pub mod fcm;
 pub mod models;
@@ -24,6 +25,17 @@ pub struct AppState {
     /// Firebase Cloud Messaging sender. `None` in dev/tests (no metadata
     /// server), where notification pushes become no-ops.
     pub fcm: Option<fcm::Fcm>,
+    /// Resend sender. `None` without an API key (dev, tests), where email
+    /// sends become no-ops exactly like push.
+    pub email: Option<email::Email>,
+    /// Public origin of the hub, e.g. `https://baphometbabes.com`. Email bodies
+    /// need absolute links (unsubscribe, deep links into the app); a relative
+    /// path is meaningless in someone's inbox.
+    pub public_base_url: String,
+    /// Shared secret the scheduled poll-reminder endpoint requires. `None`
+    /// leaves that endpoint refusing every call, which is the right default
+    /// for dev and for a production deploy that hasn't set the secret yet.
+    pub reminder_secret: Option<String>,
 }
 
 /// Rate limit knobs — relaxed in tests, strict in production.
@@ -103,6 +115,7 @@ pub fn build_app(state: AppState, allowed_origins: Option<&str>, rate_limit: Rat
         .nest("/announcements", routes::announcements::router())
         .nest("/calendar", routes::calendar::router())
         .nest("/chat", routes::chat::router())
+        .nest("/email", routes::email::router())
         .nest("/events", routes::events::router())
         .nest("/invites", routes::invites::router())
         .nest("/profile", routes::profile::profile_router())

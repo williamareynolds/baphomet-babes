@@ -319,8 +319,10 @@ test("the rides page notification toggle syncs with profile settings", async ({
   await toggle.check();
   await saved;
   await page.goto("/profile");
+  // Scoped to the push group: the same channel names appear again under the
+  // email group, so an unscoped label filter matches two switches.
   const mtb = page
-    .locator(".thaw-switch")
+    .locator(".notif-channels .thaw-switch")
     .filter({ hasText: "Mountain Bike Rides" })
     .getByRole("switch");
   await expect(mtb).toBeChecked();
@@ -336,7 +338,7 @@ test("the rides page notification toggle syncs with profile settings", async ({
   await page.goto("/profile");
   await expect(
     page
-      .locator(".thaw-switch")
+      .locator(".notif-channels .thaw-switch")
       .filter({ hasText: "Mountain Bike Rides" })
       .getByRole("switch"),
   ).not.toBeChecked();
@@ -457,9 +459,22 @@ test("profile exposes notification settings", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Notifications" }),
   ).toBeVisible();
-  // is_public switch + five channel switches + the admin-only test channel
-  // (root is a superadmin).
-  await expect(page.getByRole("switch")).toHaveCount(7);
+  // Push channels: five, plus the admin-only test channel (root is a
+  // superadmin). Counted per group rather than in total, so adding a switch
+  // elsewhere on the page doesn't quietly pass by shifting a single number.
+  await expect(
+    page.locator(".notif-channels").getByRole("switch"),
+  ).toHaveCount(6);
+  // Email channels: the four that can be emailed. Chat is absent by design —
+  // it delivers push-only and never reaches the email fan-out.
+  await expect(
+    page.locator(".email-channels").getByRole("switch"),
+  ).toHaveCount(4);
+  await expect(
+    page.locator(".email-channels").filter({ hasText: "Group Chat" }),
+  ).toHaveCount(0);
+  // Plus the standalone public-profile switch above the notification section.
+  await expect(page.getByRole("switch")).toHaveCount(11);
   await expect(
     page.locator(".thaw-switch").filter({ hasText: "Test Messages (admins only)" }),
   ).toBeVisible();
@@ -686,12 +701,19 @@ test("members see no admin-only test channel controls", async ({ page }) => {
   await page.click('form button[type="submit"]');
   await expect(page.getByRole("button", { name: "Logout" })).toBeVisible();
 
-  // Their profile has the six regular switches, no test channel.
+  // Their profile has the five regular push channels, no test channel, plus
+  // the four email channels and the public-profile switch.
   await page.goto("/profile");
   await expect(
     page.getByRole("heading", { name: "Notifications" }),
   ).toBeVisible();
-  await expect(page.getByRole("switch")).toHaveCount(6);
+  await expect(
+    page.locator(".notif-channels").getByRole("switch"),
+  ).toHaveCount(5);
+  await expect(
+    page.locator(".email-channels").getByRole("switch"),
+  ).toHaveCount(4);
+  await expect(page.getByRole("switch")).toHaveCount(10);
   await expect(
     page.locator(".thaw-switch").filter({ hasText: "Test Messages (admins only)" }),
   ).toHaveCount(0);

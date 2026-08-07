@@ -36,6 +36,7 @@ fn event_wire_format() {
         date: Some("2026-06-13".to_string()),
         description: Some("A24 night".into()),
         poll_embed_url: Some("https://rcv123.org/embed/abc".into()),
+        poll_deadline: Some("2026-06-06".into()),
         poster_url: Some("https://example.com/poster.jpg".into()),
         rsvp_deadline: Some("2026-06-10".into()),
         rsvp_count: 3,

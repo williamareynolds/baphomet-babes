@@ -24,10 +24,19 @@ fn now() -> i64 {
 /// Today's date as "YYYY-MM-DD" in UTC, for the RSVP-deadline cutoff. Good enough
 /// for a date-granularity deadline; a member RSVPing within a few hours of
 /// midnight Central could see a one-day skew, which the client-side check (local
-/// date) smooths over for the common case. Uses Howard Hinnant's days->civil
-/// algorithm so we need no date dependency.
+/// date) smooths over for the common case.
 fn today_utc() -> String {
-    let days = now().div_euclid(86_400);
+    date_utc(0)
+}
+
+/// "YYYY-MM-DD" for the UTC day `offset_days` away from today.
+fn date_utc(offset_days: i64) -> String {
+    civil_from_days(now().div_euclid(86_400) + offset_days)
+}
+
+/// "YYYY-MM-DD" for a count of days since the Unix epoch, via Howard Hinnant's
+/// days->civil algorithm so we need no date dependency.
+fn civil_from_days(days: i64) -> String {
     let z = days + 719_468;
     let era = z.div_euclid(146_097);
     let doe = z - era * 146_097;
@@ -48,6 +57,127 @@ pub fn router() -> axum::Router<AppState> {
         .route("/{id}", put(update_event).delete(delete_event))
         .route("/{id}/rsvp", post(rsvp))
         .route("/{id}/rsvps", get(list_rsvps))
+        .route("/poll-reminders", post(poll_reminders))
+}
+
+/// How many days ahead of a poll's deadline the closing-soon nudge goes out.
+/// Two gives people a weekend day to act on it without the reminder landing so
+/// early it gets forgotten.
+const REMINDER_LEAD_DAYS: i64 = 2;
+
+/// Whether this event is due a closing-soon nudge, given today's date and the
+/// far edge of the reminder window (both "YYYY-MM-DD" — ISO dates sort
+/// chronologically, so string comparison is date comparison).
+///
+/// Split out from the handler so the windowing rules are unit-testable without
+/// a database.
+pub fn needs_poll_reminder(e: &EventDoc, today: &str, cutoff: &str) -> bool {
+    // A date means voting already resolved into a screening.
+    if e.date.is_some() {
+        return false;
+    }
+    // Nothing to vote on.
+    if e.poll_embed_url.is_none() {
+        return false;
+    }
+    // Already nudged for this deadline. Moving the deadline clears the stamp.
+    if e.poll_reminder_sent_at != 0 {
+        return false;
+    }
+    match e.poll_deadline.as_deref() {
+        // Past deadlines are skipped rather than nudged late: a reminder to vote
+        // in a poll that already closed is worse than no reminder.
+        Some(d) => d >= today && d <= cutoff,
+        None => false,
+    }
+}
+
+/// Compare two secrets without leaking their common prefix through timing.
+fn secret_eq(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
+/// Send closing-soon nudges for every poll inside the reminder window.
+///
+/// Called by Cloud Scheduler once a day, authorized by a shared secret rather
+/// than a member session — there is no user behind it. Idempotent by the
+/// `poll_reminder_sent_at` stamp, so running it twice in a day, or replaying it,
+/// sends nothing the second time.
+async fn poll_reminders(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> AppResult<Json<serde_json::Value>> {
+    let Some(expected) = state.reminder_secret.as_deref() else {
+        return Err(AppError::Forbidden);
+    };
+    let provided = headers
+        .get("X-Reminder-Secret")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default();
+    if !secret_eq(provided, expected) {
+        return Err(AppError::Forbidden);
+    }
+
+    let today = today_utc();
+    let cutoff = date_utc(REMINDER_LEAD_DAYS);
+
+    let events: Vec<EventDoc> = state.db
+        .fluent()
+        .select()
+        .from(EVENTS)
+        .obj()
+        .query()
+        .await
+        .context("failed to load events for poll reminders")?;
+
+    let due: Vec<EventDoc> = events
+        .into_iter()
+        .filter(|e| needs_poll_reminder(e, &today, &cutoff))
+        .collect();
+
+    let mut reminded = 0usize;
+    for e in due {
+        let deadline = e.poll_deadline.clone().unwrap_or_default();
+        let body = if deadline == today {
+            format!("Voting closes today. Get your ranking in for {}.", e.title)
+        } else {
+            format!("Voting closes {deadline}. Get your ranking in for {}.", e.title)
+        };
+
+        if let Err(err) = crate::routes::notifications::dispatch(
+            &state,
+            shared::CHANNEL_MOVIE_NIGHT,
+            "Last call to vote",
+            &body,
+            Some("/movie-nights"),
+            None,
+        )
+        .await
+        {
+            // Leave the stamp unset so the next daily run retries this one.
+            tracing::warn!("poll reminder dispatch failed for {}: {err:#}", e.id);
+            continue;
+        }
+
+        let stamped = EventDoc { poll_reminder_sent_at: now(), ..e };
+        let _: EventDoc = state.db
+            .fluent()
+            .update()
+            .in_col(EVENTS)
+            .document_id(&stamped.id)
+            .object(&stamped)
+            .execute()
+            .await
+            .context("failed to stamp poll reminder")?;
+        reminded += 1;
+    }
+
+    tracing::info!("poll reminders sent={reminded} today={today} cutoff={cutoff}");
+    Ok(Json(serde_json::json!({ "reminded": reminded })))
 }
 
 fn doc_to_event(d: EventDoc, rsvp_count: i64, my_rsvp: bool) -> Event {
@@ -60,6 +190,7 @@ fn doc_to_event(d: EventDoc, rsvp_count: i64, my_rsvp: bool) -> Event {
         poll_embed_url: d.poll_embed_url,
         poster_url: d.poster_url,
         rsvp_deadline: d.rsvp_deadline,
+        poll_deadline: d.poll_deadline,
         rsvp_count,
         my_rsvp,
     }
@@ -152,6 +283,8 @@ async fn create_event(
         poll_embed_url: req.poll_embed_url.clone(),
         poster_url: req.poster_url.clone(),
         rsvp_deadline: req.rsvp_deadline.clone().filter(|d| !d.is_empty()),
+        poll_deadline: req.poll_deadline.clone().filter(|d| !d.is_empty()),
+        poll_reminder_sent_at: 0,
         created_at: now(),
     };
 
@@ -204,6 +337,21 @@ async fn update_event(
 
     let existing = existing.ok_or(AppError::NotFound)?;
 
+    // Same clear/set/keep semantics as the other optional dates.
+    let new_poll_deadline = match &req.poll_deadline {
+        Some(d) if d.is_empty() => None,
+        Some(d) => Some(d.clone()),
+        None => existing.poll_deadline.clone(),
+    };
+    // Moving the deadline re-arms the reminder: an admin who pushes voting out
+    // by a week means to nudge against the new date, not to have the earlier
+    // send suppress it forever.
+    let poll_reminder_sent_at = if new_poll_deadline == existing.poll_deadline {
+        existing.poll_reminder_sent_at
+    } else {
+        0
+    };
+
     let updated = EventDoc {
         id: existing.id.clone(),
         event_type: req.event_type.unwrap_or(existing.event_type),
@@ -223,6 +371,8 @@ async fn update_event(
             Some(d) => Some(d),
             None => existing.rsvp_deadline,
         },
+        poll_deadline: new_poll_deadline,
+        poll_reminder_sent_at,
         created_at: existing.created_at,
     };
 
@@ -377,4 +527,99 @@ async fn list_rsvps(
         .map(|r| Rsvp { user_id: r.user_id, author: r.author, created_at: r.created_at })
         .collect();
     Ok(Json(out))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An event mid-vote: poll set, no date yet, never nudged.
+    fn voting(deadline: Option<&str>) -> EventDoc {
+        EventDoc {
+            id: "e1".into(),
+            event_type: "main".into(),
+            title: "The Wicker Man".into(),
+            date: None,
+            description: None,
+            poll_embed_url: Some("https://rcv123.org/p/1".into()),
+            poster_url: None,
+            rsvp_deadline: None,
+            poll_deadline: deadline.map(String::from),
+            poll_reminder_sent_at: 0,
+            created_at: 0,
+        }
+    }
+
+    const TODAY: &str = "2026-08-07";
+    const CUTOFF: &str = "2026-08-09";
+
+    #[test]
+    fn nudges_a_poll_closing_inside_the_window() {
+        assert!(needs_poll_reminder(&voting(Some("2026-08-08")), TODAY, CUTOFF));
+    }
+
+    #[test]
+    fn window_includes_both_ends() {
+        assert!(needs_poll_reminder(&voting(Some(TODAY)), TODAY, CUTOFF));
+        assert!(needs_poll_reminder(&voting(Some(CUTOFF)), TODAY, CUTOFF));
+    }
+
+    #[test]
+    fn skips_deadlines_outside_the_window() {
+        // Too far out — it'll qualify on a later daily run.
+        assert!(!needs_poll_reminder(&voting(Some("2026-08-10")), TODAY, CUTOFF));
+        // Already closed: a late nudge is worse than none.
+        assert!(!needs_poll_reminder(&voting(Some("2026-08-06")), TODAY, CUTOFF));
+    }
+
+    #[test]
+    fn skips_events_with_no_deadline() {
+        assert!(!needs_poll_reminder(&voting(None), TODAY, CUTOFF));
+    }
+
+    #[test]
+    fn skips_scheduled_events() {
+        // A date means voting resolved into a screening; the poll is moot.
+        let mut e = voting(Some("2026-08-08"));
+        e.date = Some("2026-09-01".into());
+        assert!(!needs_poll_reminder(&e, TODAY, CUTOFF));
+    }
+
+    #[test]
+    fn skips_events_with_no_poll() {
+        let mut e = voting(Some("2026-08-08"));
+        e.poll_embed_url = None;
+        assert!(!needs_poll_reminder(&e, TODAY, CUTOFF));
+    }
+
+    #[test]
+    fn skips_events_already_nudged() {
+        let mut e = voting(Some("2026-08-08"));
+        e.poll_reminder_sent_at = 1_754_000_000;
+        assert!(!needs_poll_reminder(&e, TODAY, CUTOFF));
+    }
+
+    #[test]
+    fn secret_compare_matches_only_exact() {
+        assert!(secret_eq("s3cret", "s3cret"));
+        assert!(!secret_eq("s3cret", "s3crea"));
+        assert!(!secret_eq("s3cret", "s3cre"));   // prefix
+        assert!(!secret_eq("s3cret", "s3cretx")); // extension
+        assert!(!secret_eq("", "s3cret"));
+    }
+
+    #[test]
+    fn date_offsets_roll_over_month_and_year_boundaries() {
+        // Anchored on fixed day counts rather than "now", so this can't drift.
+        assert_eq!(civil_from_days(0), "1970-01-01");
+        let today = 20_672; // 2026-08-07
+        assert_eq!(civil_from_days(today), "2026-08-07");
+        assert_eq!(civil_from_days(today + REMINDER_LEAD_DAYS), "2026-08-09");
+        assert_eq!(civil_from_days(today + 25), "2026-09-01"); // month end
+        assert_eq!(civil_from_days(today + 146), "2026-12-31");
+        assert_eq!(civil_from_days(today + 147), "2027-01-01"); // year end
+        // Leap day: 2028 is a leap year.
+        assert_eq!(civil_from_days(21_243), "2028-02-29");
+        assert_eq!(civil_from_days(21_244), "2028-03-01");
+    }
 }

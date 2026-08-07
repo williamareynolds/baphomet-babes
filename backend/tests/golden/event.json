@@ -7,6 +7,7 @@
   "poll_embed_url": "https://rcv123.org/embed/abc",
   "poster_url": "https://example.com/poster.jpg",
   "rsvp_deadline": "2026-06-10",
+  "poll_deadline": "2026-06-06",
   "rsvp_count": 3,
   "my_rsvp": true
 }

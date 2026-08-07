@@ -13,6 +13,8 @@ use tower::ServiceExt;
 
 const BOOTSTRAP: &str = "boot-code-for-tests";
 const JWT_SECRET: &str = "integration-test-secret";
+const TEST_BASE_URL: &str = "https://test.baphometbabes.com";
+const REMINDER_SECRET: &str = "integration-reminder-secret";
 
 fn emulator_available() -> bool {
     if std::env::var("FIRESTORE_EMULATOR_HOST").is_ok() {
@@ -33,6 +35,9 @@ async fn test_app(name: &str) -> Router {
         superadmin_invite_code: BOOTSTRAP.into(),
         app_check: None,
         fcm: None,
+        email: None,
+        public_base_url: TEST_BASE_URL.into(),
+        reminder_secret: Some(REMINDER_SECRET.into()),
     };
     // Effectively unlimited so functional tests never trip the governor.
     build_app(state, None, RateLimit { per_second: 1, burst: 1_000_000 })
@@ -805,6 +810,9 @@ async fn rate_limiter_returns_json_429() {
         superadmin_invite_code: BOOTSTRAP.into(),
         app_check: None,
         fcm: None,
+        email: None,
+        public_base_url: TEST_BASE_URL.into(),
+        reminder_secret: Some(REMINDER_SECRET.into()),
     };
     let app = build_app(state, None, RateLimit { per_second: 1, burst: 2 });
 
@@ -844,6 +852,9 @@ async fn cors_allows_configured_origin_only() {
         superadmin_invite_code: BOOTSTRAP.into(),
         app_check: None,
         fcm: None,
+        email: None,
+        public_base_url: TEST_BASE_URL.into(),
+        reminder_secret: Some(REMINDER_SECRET.into()),
     };
     let app = build_app(
         state,
@@ -888,6 +899,9 @@ async fn app_check_blocks_direct_api_access() {
         // needs no network.
         app_check: Some(backend::app_check::AppCheck::new("780823612423")),
         fcm: None,
+        email: None,
+        public_base_url: TEST_BASE_URL.into(),
+        reminder_secret: Some(REMINDER_SECRET.into()),
     };
     let app = build_app(state, None, RateLimit { per_second: 1, burst: 1_000_000 });
 
@@ -1433,6 +1447,9 @@ async fn test_app_with_push(name: &str) -> (Router, mock_fcm::Recorder) {
         superadmin_invite_code: BOOTSTRAP.into(),
         app_check: None,
         fcm: Some(backend::fcm::Fcm::with_endpoint(&project, url, "test-oauth-token")),
+        email: None,
+        public_base_url: TEST_BASE_URL.into(),
+        reminder_secret: Some(REMINDER_SECRET.into()),
     };
     (build_app(state, None, RateLimit { per_second: 1, burst: 1_000_000 }), rec)
 }
@@ -1627,4 +1644,349 @@ async fn self_test_push_targets_only_the_callers_devices() {
     // It requires auth like everything else.
     let (status, _) = send(&app, req("POST", "/notifications/test", None, None)).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+// ---- Email delivery (mock Resend server) ----
+//
+// Same idea as the mock FCM block above: run the real fan-out against a local
+// stand-in for the Resend API and assert who gets mail, what the message
+// carries, and that the unsubscribe capability URL actually stops delivery.
+
+mod mock_resend {
+    use std::sync::{Arc, Mutex};
+    use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
+    use serde_json::Value;
+
+    #[derive(Clone, Default)]
+    pub struct Recorder(pub Arc<Mutex<Vec<Value>>>);
+
+    impl Recorder {
+        /// Addresses mailed so far, in send order.
+        pub fn recipients(&self) -> Vec<String> {
+            self.0
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|m| m["to"][0].as_str().unwrap_or_default().to_string())
+                .collect()
+        }
+
+        pub fn requests(&self) -> Vec<Value> {
+            self.0.lock().unwrap().clone()
+        }
+
+        pub fn clear(&self) {
+            self.0.lock().unwrap().clear();
+        }
+
+        /// Wait until `n` sends arrive (the fan-out runs in a background task).
+        pub async fn wait_for(&self, n: usize) {
+            for _ in 0..200 {
+                if self.0.lock().unwrap().len() >= n {
+                    return;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+            }
+            panic!("timed out waiting for {n} emails; got {:?}", self.recipients());
+        }
+
+        /// Give the fan-out a beat, then assert nothing was sent. Used for the
+        /// "this member must NOT be mailed" cases, where waiting for a count
+        /// can't work.
+        pub async fn expect_silence(&self) {
+            tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            assert!(
+                self.0.lock().unwrap().is_empty(),
+                "expected no email, got {:?}",
+                self.recipients()
+            );
+        }
+    }
+
+    async fn handle(State(rec): State<Recorder>, Json(body): Json<Value>) -> impl IntoResponse {
+        rec.0.lock().unwrap().push(body);
+        (StatusCode::OK, r#"{"id":"mock-message-id"}"#)
+    }
+
+    /// Start the mock server; returns its base URL and the send recorder.
+    pub async fn start() -> (String, Recorder) {
+        let rec = Recorder::default();
+        let app = axum::Router::new()
+            .route("/emails", axum::routing::post(handle))
+            .with_state(rec.clone());
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        (format!("http://{addr}"), rec)
+    }
+}
+
+/// Fresh app wired to a mock Resend server. Returns the app and the recorder.
+async fn test_app_with_email(name: &str) -> (Router, mock_resend::Recorder) {
+    let (url, rec) = mock_resend::start().await;
+    let project = format!("bb-test-{name}-{}", std::process::id());
+    let db = FirestoreDb::new(&project).await.expect("emulator connection");
+    let state = AppState {
+        db,
+        jwt_secret: JWT_SECRET.into(),
+        superadmin_invite_code: BOOTSTRAP.into(),
+        app_check: None,
+        fcm: None,
+        email: Some(backend::email::Email::with_endpoint(
+            "test-resend-key",
+            "Baphomet Babes <noreply@test.baphometbabes.com>",
+            url,
+        )),
+        public_base_url: TEST_BASE_URL.into(),
+        reminder_secret: Some(REMINDER_SECRET.into()),
+    };
+    (build_app(state, None, RateLimit { per_second: 1, burst: 1_000_000 }), rec)
+}
+
+/// Create a movie night as an admin. Returns the event id.
+async fn create_event(app: &Router, admin: &str, body: Value) -> String {
+    let (status, ev) = send(app, req("POST", "/events", Some(admin), Some(body))).await;
+    assert_eq!(status, StatusCode::OK, "event create failed: {ev}");
+    ev["id"].as_str().unwrap().to_string()
+}
+
+#[tokio::test]
+async fn email_goes_only_to_members_subscribed_to_that_channel() {
+    if !emulator_available() { return; }
+    let (app, mail) = test_app_with_email("email-prefs").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (_member, _) = invite_and_register(&app, &root, "m1@test.com", "m1", "member").await;
+    let (optout, _) = invite_and_register(&app, &root, "m2@test.com", "m2", "member").await;
+
+    // One member turns movie-night email off; everyone else is on defaults.
+    let (status, prefs) = send(&app, req("PUT", "/notifications/prefs", Some(&optout), Some(json!({
+        "email": { "movie_night": false }
+    })))).await;
+    assert_eq!(status, StatusCode::OK, "prefs update failed: {prefs}");
+    assert_eq!(prefs["email"]["movie_night"], false);
+    // Push prefs are a separate axis and must be untouched by an email change.
+    assert_eq!(prefs["movie_night"], true, "email pref must not disturb push pref");
+
+    create_event(&app, &root, json!({
+        "event_type": "main", "title": "The Witch", "poll_embed_url": "https://rcv123.org/p/1"
+    })).await;
+
+    mail.wait_for(2).await;
+    let mut got = mail.recipients();
+    got.sort();
+    assert_eq!(got, vec!["m1@test.com", "root@test.com"], "opted-out member must be skipped");
+
+    // The message carries the deep link, the unsubscribe URL, and the
+    // one-click header a mail client needs.
+    let msg = &mail.requests()[0];
+    assert_eq!(msg["subject"], "New movie night: The Witch");
+    let html = msg["html"].as_str().unwrap();
+    assert!(html.contains("https://test.baphometbabes.com/movie-nights"), "{html}");
+    assert!(html.contains("/email/unsubscribe/"), "{html}");
+    assert!(msg["headers"]["List-Unsubscribe"].as_str().unwrap().contains("/email/unsubscribe/"));
+    assert_eq!(msg["headers"]["List-Unsubscribe-Post"], "List-Unsubscribe=One-Click");
+}
+
+#[tokio::test]
+async fn announcements_are_email_opt_in() {
+    if !emulator_available() { return; }
+    let (app, mail) = test_app_with_email("email-optin").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, _) = invite_and_register(&app, &root, "m1@test.com", "m1", "member").await;
+
+    // Default prefs: nobody has opted into announcement email.
+    let (status, _) = send(&app, req("POST", "/announcements", Some(&root), Some(json!({
+        "title": "Potluck", "body": "Bring a dish"
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+    mail.expect_silence().await;
+
+    // Opting in turns it on for that member only.
+    let (status, _) = send(&app, req("PUT", "/notifications/prefs", Some(&member), Some(json!({
+        "email": { "announcements": true }
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, _) = send(&app, req("POST", "/announcements", Some(&root), Some(json!({
+        "title": "Potluck 2", "body": "Bring another dish"
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+
+    mail.wait_for(1).await;
+    assert_eq!(mail.recipients(), vec!["m1@test.com"]);
+}
+
+#[tokio::test]
+async fn unsubscribe_link_works_without_a_session() {
+    if !emulator_available() { return; }
+    let (app, mail) = test_app_with_email("email-unsub").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, _) = invite_and_register(&app, &root, "m1@test.com", "m1", "member").await;
+
+    create_event(&app, &root, json!({ "event_type": "main", "title": "Hereditary" })).await;
+    mail.wait_for(2).await;
+
+    // Pull the member's own unsubscribe path straight out of the mail they got.
+    let msg = mail
+        .requests()
+        .into_iter()
+        .find(|m| m["to"][0] == "m1@test.com")
+        .expect("member was not emailed");
+    let unsub = msg["headers"]["List-Unsubscribe"].as_str().unwrap();
+    let path = unsub
+        .trim_start_matches('<')
+        .trim_end_matches('>')
+        .strip_prefix(TEST_BASE_URL)
+        .expect("unsubscribe link must be absolute and on the public base URL")
+        .to_string();
+
+    // GET only offers the choice. Mail scanners prefetch links, so this must
+    // not change anything.
+    let (status, _) = send(&app, req("GET", &path, None, None)).await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, prefs) = send(&app, req("GET", "/notifications/prefs", Some(&member), None)).await;
+    assert_eq!(prefs["email"]["movie_night"], true, "GET must not unsubscribe");
+
+    // POST performs it.
+    let (status, _) = send(&app, req("POST", &path, None, None)).await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, prefs) = send(&app, req("GET", "/notifications/prefs", Some(&member), None)).await;
+    assert_eq!(prefs["email"]["movie_night"], false);
+    // Only the named channel goes; push is untouched.
+    assert_eq!(prefs["movie_night"], true);
+
+    // And the next send skips them.
+    mail.clear();
+    create_event(&app, &root, json!({ "event_type": "main", "title": "Midsommar" })).await;
+    mail.wait_for(1).await;
+    assert_eq!(mail.recipients(), vec!["root@test.com"]);
+
+    // Replaying the same link is harmless.
+    let (status, _) = send(&app, req("POST", &path, None, None)).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // A token that was never minted is a 404, not a silent success.
+    let (status, _) = send(&app, req("POST", "/email/unsubscribe/not-a-real-token", None, None)).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn poll_reminders_need_the_secret_and_fire_once() {
+    if !emulator_available() { return; }
+    let (app, mail) = test_app_with_email("email-reminder").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (_member, _) = invite_and_register(&app, &root, "m1@test.com", "m1", "member").await;
+
+    // Voting is open and closes today, so it sits inside the reminder window.
+    let today = {
+        let days = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64
+            / 86_400;
+        let z = days + 719_468;
+        let era = z.div_euclid(146_097);
+        let doe = z - era * 146_097;
+        let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
+        let y = yoe + era * 400;
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+        let mp = (5 * doy + 2) / 153;
+        let d = doy - (153 * mp + 2) / 5 + 1;
+        let m = if mp < 10 { mp + 3 } else { mp - 9 };
+        let y = if m <= 2 { y + 1 } else { y };
+        format!("{y:04}-{m:02}-{d:02}")
+    };
+    create_event(&app, &root, json!({
+        "event_type": "main",
+        "title": "The Lighthouse",
+        "poll_embed_url": "https://rcv123.org/p/2",
+        "poll_deadline": today,
+    })).await;
+    mail.wait_for(2).await; // the "new movie night" mail
+    mail.clear();
+
+    // No secret, and a wrong secret, are both refused.
+    let (status, _) = send(&app, req("POST", "/events/poll-reminders", None, None)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let wrong = Request::builder()
+        .method("POST")
+        .uri("/events/poll-reminders")
+        .header("x-forwarded-for", "10.1.2.3")
+        .header("X-Reminder-Secret", "not-the-secret")
+        .body(Body::empty())
+        .unwrap();
+    let (status, _) = send(&app, wrong).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    mail.expect_silence().await;
+
+    let fire = || {
+        Request::builder()
+            .method("POST")
+            .uri("/events/poll-reminders")
+            .header("x-forwarded-for", "10.1.2.3")
+            .header("X-Reminder-Secret", REMINDER_SECRET)
+            .body(Body::empty())
+            .unwrap()
+    };
+
+    let (status, body) = send(&app, fire()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["reminded"], 1);
+
+    mail.wait_for(2).await;
+    let msg = &mail.requests()[0];
+    assert_eq!(msg["subject"], "Last call to vote");
+    assert!(msg["text"].as_str().unwrap().contains("The Lighthouse"));
+
+    // Idempotent: the same day's second tick sends nothing.
+    mail.clear();
+    let (status, body) = send(&app, fire()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["reminded"], 0);
+    mail.expect_silence().await;
+}
+
+#[tokio::test]
+async fn poll_reminders_skip_events_that_are_not_open_for_voting() {
+    if !emulator_available() { return; }
+    let (app, mail) = test_app_with_email("email-reminder-skip").await;
+    let root = bootstrap_superadmin(&app).await;
+
+    // Scheduled (date set) — voting already resolved.
+    create_event(&app, &root, json!({
+        "event_type": "main",
+        "title": "Scheduled",
+        "date": "2030-01-01",
+        "poll_embed_url": "https://rcv123.org/p/3",
+        "poll_deadline": "2030-01-01",
+    })).await;
+    // Open for voting but the deadline is far out.
+    create_event(&app, &root, json!({
+        "event_type": "main",
+        "title": "Far Out",
+        "poll_embed_url": "https://rcv123.org/p/4",
+        "poll_deadline": "2099-12-31",
+    })).await;
+    // Open, but no deadline was ever set.
+    create_event(&app, &root, json!({
+        "event_type": "main",
+        "title": "No Deadline",
+        "poll_embed_url": "https://rcv123.org/p/5",
+    })).await;
+
+    mail.wait_for(3).await; // the three "new movie night" mails
+    mail.clear();
+
+    let (status, body) = send(&app, Request::builder()
+        .method("POST")
+        .uri("/events/poll-reminders")
+        .header("x-forwarded-for", "10.1.2.3")
+        .header("X-Reminder-Secret", REMINDER_SECRET)
+        .body(Body::empty())
+        .unwrap()).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["reminded"], 0);
+    mail.expect_silence().await;
 }

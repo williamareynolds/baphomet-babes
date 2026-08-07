@@ -94,6 +94,8 @@ proptest! {
             date: Some(date),
             description,
             poll_embed_url: None,
+            poll_deadline: None,
+            poll_reminder_sent_at: 0,
             poster_url,
             rsvp_deadline: None,
             created_at,

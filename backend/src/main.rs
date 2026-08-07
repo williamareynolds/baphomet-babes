@@ -40,11 +40,42 @@ async fn main() {
             backend::fcm::Fcm::new(&gcp_project)
         });
 
+    // Email: enabled by the presence of a Resend API key, so a deploy that
+    // hasn't been given one simply doesn't send — same shape as FCM above.
+    let email = std::env::var("RESEND_API_KEY").ok().filter(|k| !k.is_empty()).map(|key| {
+        // Empty counts as unset: CI always passes the flag, so a misnamed or
+        // missing repo variable arrives as "" rather than absent — and an empty
+        // From makes Resend reject every send.
+        let from = std::env::var("EMAIL_FROM")
+            .ok()
+            .filter(|f| !f.trim().is_empty())
+            .unwrap_or_else(|| "Baphomet Babes <noreply@baphometbabes.com>".to_string());
+        tracing::info!("email enabled, sending as {from}");
+        backend::email::Email::new(key, from)
+    });
+
+    let public_base_url = std::env::var("PUBLIC_BASE_URL")
+        .unwrap_or_else(|_| "https://baphometbabes.com".to_string());
+
+    let reminder_secret = std::env::var("REMINDER_SECRET").ok().filter(|s| !s.is_empty());
+    if reminder_secret.is_none() {
+        tracing::warn!("REMINDER_SECRET unset — the poll-reminder endpoint will refuse all calls");
+    }
+
     let db = FirestoreDb::new(&gcp_project)
         .await
         .expect("failed to connect to Firestore");
 
-    let state = AppState { db, jwt_secret, superadmin_invite_code, app_check, fcm };
+    let state = AppState {
+        db,
+        jwt_secret,
+        superadmin_invite_code,
+        app_check,
+        fcm,
+        email,
+        public_base_url,
+        reminder_secret,
+    };
     let app = build_app(state, allowed_origins.as_deref(), RateLimit::default());
 
     let port = std::env::var("PORT").unwrap_or_else(|_| "8080".to_string());
