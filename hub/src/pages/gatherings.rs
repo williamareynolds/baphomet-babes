@@ -103,6 +103,9 @@ pub fn GatheringsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let lat: RwSignal<Option<f64>> = RwSignal::new(None);
     let lng: RwSignal<Option<f64>> = RwSignal::new(None);
     let cover_url = RwSignal::new(String::new());
+    // Editing reuses this same form: one set of fields, one Leaflet picker.
+    // A second picker would need its own container id and its own lifecycle.
+    let editing_id: RwSignal<Option<String>> = RwSignal::new(None);
     let (form_error, set_form_error) = signal(String::new());
     let (form_note, set_form_note) = signal(String::new());
     let busy = RwSignal::new(false);
@@ -214,7 +217,54 @@ pub fn GatheringsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
         let _ = reader.read_as_data_url(&file);
     };
 
-    let handle_create = move |ev: leptos::ev::SubmitEvent| {
+    let reset_form = move || {
+        title.set(String::new());
+        description.set(String::new());
+        starts_at.set(String::new());
+        ends_at.set(String::new());
+        address.set(String::new());
+        cover_url.set(String::new());
+        lat.set(None);
+        lng.set(None);
+        map::clear(MAP_ID);
+        editing_id.set(None);
+    };
+
+    // Load a gathering into the form. The picker is re-seeded at the stored pin
+    // so an edit starts from where the gathering actually is.
+    let start_edit = move |g: Gathering| {
+        title.set(g.title.clone());
+        description.set(g.description.clone().unwrap_or_default());
+        starts_at.set(g.starts_at.clone());
+        ends_at.set(g.ends_at.clone().unwrap_or_default());
+        address.set(g.address.clone().unwrap_or_default());
+        cover_url.set(g.cover_url.clone().unwrap_or_default());
+        lat.set(g.lat);
+        lng.set(g.lng);
+        match (g.lat, g.lng) {
+            (Some(la), Some(ln)) => {
+                let on_pick = Closure::<dyn FnMut(f64, f64)>::new(move |a: f64, b: f64| {
+                    lat.set(Some(a));
+                    lng.set(Some(b));
+                });
+                map::init(MAP_ID, la, ln, true, &on_pick);
+                on_pick.forget();
+            }
+            _ => map::clear(MAP_ID),
+        }
+        editing_id.set(Some(g.id.clone()));
+        set_form_error.set(String::new());
+        set_form_note.set(String::new());
+        form_open.set(true);
+    };
+
+    let cancel_edit = move |_| {
+        reset_form();
+        form_open.set(false);
+        set_form_note.set(String::new());
+    };
+
+    let handle_submit = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
         let Some(user) = auth.get() else { return };
         set_form_error.set(String::new());
@@ -236,37 +286,60 @@ pub fn GatheringsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
             return;
         }
 
-        let req = CreateGatheringRequest {
-            title: title.get(),
-            description: Some(description.get()).filter(|d| !d.is_empty()),
-            starts_at: starts_at.get(),
-            ends_at: Some(ends_at.get()).filter(|d| !d.is_empty()),
-            address: Some(addr).filter(|a| !a.trim().is_empty()),
-            lat: lat.get(),
-            lng: lng.get(),
-            cover_url: Some(cover_url.get()).filter(|c| !c.is_empty()),
-        };
         busy.set(true);
-        wasm_bindgen_futures::spawn_local(async move {
-            match api::create_gathering(req, &user.token).await {
-                Ok(_) => {
-                    title.set(String::new());
-                    description.set(String::new());
-                    starts_at.set(String::new());
-                    ends_at.set(String::new());
-                    address.set(String::new());
-                    cover_url.set(String::new());
-                    lat.set(None);
-                    lng.set(None);
-                    map::clear(MAP_ID);
-                    set_form_note.set("Gathering posted.".into());
-                    form_open.set(false);
-                    set_refresh.update(|n| *n += 1);
-                }
-                Err(e) => set_form_error.set(e),
+        match editing_id.get() {
+            // Every field is sent explicitly, so clearing one actually clears
+            // it: the API reads absent as "keep", not as "empty".
+            Some(id) => {
+                let req = shared::UpdateGatheringRequest {
+                    title: Some(title.get()),
+                    description: Some(description.get()),
+                    starts_at: Some(starts_at.get()),
+                    ends_at: Some(ends_at.get()),
+                    address: Some(addr),
+                    lat: lat.get(),
+                    lng: lng.get(),
+                    clear_pin: lat.get().is_none() || lng.get().is_none(),
+                    cover_url: Some(cover_url.get()),
+                };
+                wasm_bindgen_futures::spawn_local(async move {
+                    match api::update_gathering(&id, req, &user.token).await {
+                        Ok(_) => {
+                            reset_form();
+                            set_form_note.set("Gathering updated.".into());
+                            form_open.set(false);
+                            set_refresh.update(|n| *n += 1);
+                        }
+                        Err(e) => set_form_error.set(e),
+                    }
+                    busy.set(false);
+                });
             }
-            busy.set(false);
-        });
+            None => {
+                let req = CreateGatheringRequest {
+                    title: title.get(),
+                    description: Some(description.get()).filter(|d| !d.is_empty()),
+                    starts_at: starts_at.get(),
+                    ends_at: Some(ends_at.get()).filter(|d| !d.is_empty()),
+                    address: Some(addr).filter(|a| !a.trim().is_empty()),
+                    lat: lat.get(),
+                    lng: lng.get(),
+                    cover_url: Some(cover_url.get()).filter(|c| !c.is_empty()),
+                };
+                wasm_bindgen_futures::spawn_local(async move {
+                    match api::create_gathering(req, &user.token).await {
+                        Ok(_) => {
+                            reset_form();
+                            set_form_note.set("Gathering posted.".into());
+                            form_open.set(false);
+                            set_refresh.update(|n| *n += 1);
+                        }
+                        Err(e) => set_form_error.set(e),
+                    }
+                    busy.set(false);
+                });
+            }
+        }
     };
 
     let handle_delete = move |id: String| {
@@ -311,7 +384,15 @@ pub fn GatheringsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
             <Show when=is_admin>
                 <div style="margin:1.5rem 0;">
                     <Button appearance=ButtonAppearance::Primary
-                        on_click=move |_| form_open.update(|o| *o = !*o)>
+                        on_click=move |_| {
+                            // Closing mid-edit would leave editing_id set and the
+                            // next "Post a Gathering" would silently update the
+                            // gathering being edited instead of creating one.
+                            if form_open.get() {
+                                reset_form();
+                            }
+                            form_open.update(|o| *o = !*o);
+                        }>
                         {move || if form_open.get() { "Close" } else { "Post a Gathering" }}
                     </Button>
                 </div>
@@ -321,7 +402,7 @@ pub fn GatheringsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
             // its state; `display:none` rather than an unmount.
             <div style:display=move || if form_open.get() && is_admin() { "block" } else { "none" }>
                 <Card>
-                    <form on:submit=handle_create>
+                    <form on:submit=handle_submit>
                         <Field label="What is it?">
                             <Input value=title placeholder="Bonfire at the quarry" />
                         </Field>
@@ -337,9 +418,12 @@ pub fn GatheringsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                         <Field label="Address">
                             <Input value=address placeholder="905 NW 10th St, Bentonville" />
                         </Field>
+                        // button_type=Button is load-bearing: inside a form a
+                        // bare <button> defaults to submit, which posted the
+                        // gathering the moment you looked up an address.
                         <div style="margin:0.5rem 0 1rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
-                            <Button on_click=find_on_map>"Find on map"</Button>
-                            <Button on_click=clear_pin>"Clear pin"</Button>
+                            <Button button_type=ButtonType::Button on_click=find_on_map>"Find on map"</Button>
+                            <Button button_type=ButtonType::Button on_click=clear_pin>"Clear pin"</Button>
                         </div>
                         <p class="field-hint">
                             "An address or a pin is required — both is best, so people can navigate either way."
@@ -366,14 +450,24 @@ pub fn GatheringsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                             <p class="error">{move || form_error.get()}</p>
                         </Show>
 
-                        <div style="margin-top:1rem;">
+                        <div style="margin-top:1rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
                             <Button
                                 button_type=ButtonType::Submit
                                 appearance=ButtonAppearance::Primary
                                 disabled=Signal::derive(move || busy.get())
                             >
-                                {move || if busy.get() { "Posting…" } else { "Post Gathering" }}
+                                {move || match (busy.get(), editing_id.get().is_some()) {
+                                    (true, true) => "Saving…",
+                                    (true, false) => "Posting…",
+                                    (false, true) => "Save Changes",
+                                    (false, false) => "Post Gathering",
+                                }}
                             </Button>
+                            <Show when=move || editing_id.get().is_some()>
+                                <Button button_type=ButtonType::Button on_click=cancel_edit>
+                                    "Cancel"
+                                </Button>
+                            </Show>
                         </div>
                     </form>
                 </Card>
@@ -392,6 +486,7 @@ pub fn GatheringsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                             let id_rsvp = g.id.clone();
                             let id_view = g.id.clone();
                             let id_del = g.id.clone();
+                            let g_edit = g.clone();
                             let going = g.my_rsvp;
                             let link = maps_link(&g);
                             view! {
@@ -427,6 +522,10 @@ pub fn GatheringsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
 
                                     <Show when=is_admin>
                                         <div style="margin-top:0.75rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+                                            <Button on_click={
+                                                let g = g_edit.clone();
+                                                move |_| start_edit(g.clone())
+                                            }>"Edit"</Button>
                                             <Button on_click={
                                                 let id = id_view.clone();
                                                 move |_| view_rsvps(id.clone())

@@ -7,8 +7,8 @@ use shared::{
     UpdateRideRequest, UpdateUserRequest, UserSummary,
 };
 use shared::{
-    CreateGatheringRequest, Gathering, GeocodeRequest, GeocodeResponse, UploadImageRequest,
-    UploadImageResponse,
+    CreateGatheringRequest, Gathering, GeocodeRequest, GeocodeResponse, UpdateGatheringRequest,
+    UploadImageRequest, UploadImageResponse,
 };
 
 /// API base chosen at runtime from the page's hostname, so the URL can never be
@@ -413,6 +413,10 @@ pub async fn fetch_gatherings(token: &str) -> Result<Vec<Gathering>, String> {
 
 pub async fn create_gathering(req: CreateGatheringRequest, token: &str) -> Result<Gathering, String> {
     post_json("/gatherings", &req, Some(token)).await
+}
+
+pub async fn update_gathering(id: &str, req: UpdateGatheringRequest, token: &str) -> Result<Gathering, String> {
+    put_json(&format!("/gatherings/{id}"), &req, token).await
 }
 
 pub async fn delete_gathering(id: &str, token: &str) -> Result<(), String> {

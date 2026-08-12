@@ -849,3 +849,63 @@ test("a member sees the gathering count but no attendee controls", async ({
     page.locator(".thaw-card").filter({ hasText: "Quarry Bonfire" }),
   ).toHaveCount(0);
 });
+
+test("map buttons don't post the form, and a gathering can be edited", async ({
+  page,
+}) => {
+  await login(page);
+  await page.goto("/gatherings");
+  await page.getByRole("button", { name: "Post a Gathering" }).click();
+
+  await page.getByPlaceholder("Bonfire at the quarry").fill("Edit Me");
+  await page
+    .locator('input[type="datetime-local"]')
+    .first()
+    .fill("2030-10-05T19:00");
+  await page.getByPlaceholder("905 NW 10th St, Bentonville").fill("Clubhouse");
+
+  // Regression guard: inside a <form> a bare <button> defaults to submit, so
+  // the map helpers used to post the gathering before the admin was finished
+  // with it. "Clear pin" is the network-free one of the pair.
+  await page.getByRole("button", { name: "Clear pin" }).click();
+  await expect(
+    page.locator(".thaw-card").filter({ hasText: "Edit Me" }),
+  ).toHaveCount(0);
+
+  // Submitting deliberately does post it.
+  await page.getByRole("button", { name: "Post Gathering" }).click();
+  const card = page.locator(".thaw-card").filter({ hasText: "Edit Me" });
+  await expect(card).toBeVisible();
+  await expect(card).toContainText("October 5, 2030");
+
+  // Edit prefills the form from the stored gathering.
+  await card.getByRole("button", { name: "Edit" }).click();
+  await expect(page.getByPlaceholder("Bonfire at the quarry")).toHaveValue(
+    "Edit Me",
+  );
+  await expect(page.getByPlaceholder("905 NW 10th St, Bentonville")).toHaveValue(
+    "Clubhouse",
+  );
+
+  await page.getByPlaceholder("Bonfire at the quarry").fill("Edited Already");
+  await page
+    .locator('input[type="datetime-local"]')
+    .first()
+    .fill("2030-10-06T20:00");
+  await page.getByRole("button", { name: "Save Changes" }).click();
+
+  const edited = page.locator(".thaw-card").filter({ hasText: "Edited Already" });
+  await expect(edited).toBeVisible();
+  await expect(edited).toContainText("October 6, 2030");
+  await expect(edited).toContainText("8:00 PM");
+  // Edited in place, not posted as a second gathering.
+  await expect(
+    page.locator(".thaw-card").filter({ hasText: "Edit Me" }),
+  ).toHaveCount(0);
+
+  // Clean up for later serial tests.
+  await edited.getByRole("button", { name: "Delete" }).click();
+  await expect(
+    page.locator(".thaw-card").filter({ hasText: "Edited Already" }),
+  ).toHaveCount(0);
+});
