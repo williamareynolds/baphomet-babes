@@ -93,6 +93,7 @@ fn label(channel: Option<&str>) -> &'static str {
         Some(shared::CHANNEL_ANNOUNCEMENTS) => "announcements",
         Some(shared::CHANNEL_GENERAL) => "general",
         Some(shared::CHANNEL_MOUNTAIN_BIKE) => "mountain bike rides",
+        Some(shared::CHANNEL_GATHERINGS) => "gatherings",
         _ => "all club",
     }
 }
@@ -166,11 +167,13 @@ async fn unsubscribe(
         chat: false,
         mountain_bike: false,
         test: true,
+        gatherings: true,
         cleared_at: 0,
         email_announcements: false,
         email_general: false,
         email_movie_night: true,
         email_mountain_bike: false,
+        email_gatherings: true,
     });
 
     match q.channel.as_deref() {
@@ -178,6 +181,7 @@ async fn unsubscribe(
         Some(shared::CHANNEL_ANNOUNCEMENTS) => prefs.email_announcements = false,
         Some(shared::CHANNEL_GENERAL) => prefs.email_general = false,
         Some(shared::CHANNEL_MOUNTAIN_BIKE) => prefs.email_mountain_bike = false,
+        Some(shared::CHANNEL_GATHERINGS) => prefs.email_gatherings = false,
         // Unknown channel, or none at all (one-click from a mail client): drop
         // every email channel. Better to over-honor an opt-out than under-honor.
         _ => {
@@ -185,6 +189,7 @@ async fn unsubscribe(
             prefs.email_announcements = false;
             prefs.email_general = false;
             prefs.email_mountain_bike = false;
+            prefs.email_gatherings = false;
         }
     }
 

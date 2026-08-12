@@ -173,6 +173,175 @@ pub struct UpdateEventRequest {
     pub poll_deadline: Option<String>,
 }
 
+// Gatherings
+//
+// A club get-together that is not a screening: no poll, no voting — the date,
+// time and place are decided up front and stated. Kept apart from `Event`
+// precisely because those fields are required here and optional there; folding
+// them together would leave the requirement living in validation instead of the
+// type, and would drag gatherings through the movie-night voting flow.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Gathering {
+    pub id: String,
+    pub title: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Naive local datetime, "YYYY-MM-DDTHH:MM" — the club is all in one
+    /// timezone, so wall-clock time is what people mean. Same convention as
+    /// rides, where lexicographic order is also chronological order.
+    pub starts_at: String,
+    #[serde(default)]
+    pub ends_at: Option<String>,
+    /// Human-readable address. Either this or a pin is required; both is best,
+    /// since an address is what someone pastes into their phone's maps app.
+    #[serde(default)]
+    pub address: Option<String>,
+    #[serde(default)]
+    pub lat: Option<f64>,
+    #[serde(default)]
+    pub lng: Option<f64>,
+    /// Uploaded cover image, stored in our media bucket.
+    #[serde(default)]
+    pub cover_url: Option<String>,
+    pub created_by: String,
+    pub created_at: i64,
+    /// How many members are going. Computed per request, never stored.
+    #[serde(default)]
+    pub rsvp_count: i64,
+    /// Whether the requesting member is going. Computed per request.
+    #[serde(default)]
+    pub my_rsvp: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateGatheringRequest {
+    pub title: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    pub starts_at: String,
+    #[serde(default)]
+    pub ends_at: Option<String>,
+    #[serde(default)]
+    pub address: Option<String>,
+    #[serde(default)]
+    pub lat: Option<f64>,
+    #[serde(default)]
+    pub lng: Option<f64>,
+    #[serde(default)]
+    pub cover_url: Option<String>,
+}
+
+/// Edit an existing gathering. `Some(_)` replaces, `None` keeps.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UpdateGatheringRequest {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub starts_at: Option<String>,
+    pub ends_at: Option<String>,
+    pub address: Option<String>,
+    pub lat: Option<f64>,
+    pub lng: Option<f64>,
+    /// Send both coordinates to move the pin, or neither to keep it. Dropping
+    /// the pin entirely needs `clear_pin` — `None` can't mean "clear".
+    #[serde(default)]
+    pub clear_pin: bool,
+    pub cover_url: Option<String>,
+}
+
+/// Cover image upload. The bytes ride as base64 in JSON rather than multipart:
+/// it keeps the wasm client to `fetch` with a JSON body, and at a 5 MB cap the
+/// ~33% encoding overhead is irrelevant next to Cloud Run's 32 MB request limit.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UploadImageRequest {
+    pub content_type: String,
+    pub data_base64: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UploadImageResponse {
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeocodeRequest {
+    pub query: String,
+}
+
+/// A geocode miss is `found: false` rather than an error — the admin form just
+/// leaves the pin to the human.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeocodeResponse {
+    pub found: bool,
+    #[serde(default)]
+    pub lat: Option<f64>,
+    #[serde(default)]
+    pub lng: Option<f64>,
+    #[serde(default)]
+    pub display_name: Option<String>,
+}
+
+/// Where a gathering will be. At least one form is required, so a member always
+/// has something to navigate by.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GatheringPlace<'a> {
+    pub address: Option<&'a str>,
+    pub lat: Option<f64>,
+    pub lng: Option<f64>,
+}
+
+/// Validate the parts of a gathering that don't need a database.
+///
+/// Shared rather than backend-local so the form and the API agree on the rules
+/// and the rules can be unit-tested without an emulator.
+pub fn validate_gathering(
+    title: &str,
+    starts_at: &str,
+    ends_at: Option<&str>,
+    place: GatheringPlace<'_>,
+) -> Result<(), String> {
+    if title.trim().is_empty() {
+        return Err("a gathering needs a title".into());
+    }
+    if !valid_local_datetime(starts_at) {
+        return Err("start must be YYYY-MM-DDTHH:MM".into());
+    }
+    if let Some(end) = ends_at.filter(|e| !e.is_empty()) {
+        if !valid_local_datetime(end) {
+            return Err("end must be YYYY-MM-DDTHH:MM".into());
+        }
+        if end <= starts_at {
+            return Err("the gathering must end after it starts".into());
+        }
+    }
+    match (place.lat, place.lng) {
+        (Some(lat), Some(lng)) => {
+            if !(-90.0..=90.0).contains(&lat) || !(-180.0..=180.0).contains(&lng) {
+                return Err("that pin is off the map".into());
+            }
+        }
+        (None, None) => {}
+        _ => return Err("a pin needs both coordinates".into()),
+    }
+    let has_address = place.address.map(|a| !a.trim().is_empty()).unwrap_or(false);
+    let has_pin = place.lat.is_some() && place.lng.is_some();
+    if !has_address && !has_pin {
+        return Err("a gathering needs an address or a pin on the map".into());
+    }
+    Ok(())
+}
+
+/// Validate a "YYYY-MM-DDTHH:MM" naive local datetime — what
+/// `<input type="datetime-local">` produces.
+pub fn valid_local_datetime(s: &str) -> bool {
+    let b = s.as_bytes();
+    b.len() == 16
+        && b[4] == b'-'
+        && b[7] == b'-'
+        && b[10] == b'T'
+        && b[13] == b':'
+        && s.chars().enumerate().all(|(i, c)| matches!(i, 4 | 7 | 10 | 13) || c.is_ascii_digit())
+}
+
 /// Member's RSVP action for an event: going (true) or cancel (false).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RsvpRequest {
@@ -453,6 +622,7 @@ pub const CHANNEL_GENERAL: &str = "general";
 pub const CHANNEL_MOVIE_NIGHT: &str = "movie_night";
 pub const CHANNEL_CHAT: &str = "chat";
 pub const CHANNEL_MOUNTAIN_BIKE: &str = "mountain_bike";
+pub const CHANNEL_GATHERINGS: &str = "gatherings";
 /// Admin-only channel for exercising the push pipeline without bothering
 /// members: only admins/superadmins ever receive it, and it skips the inbox.
 pub const CHANNEL_TEST: &str = "test";
@@ -482,6 +652,10 @@ pub struct NotificationPrefs {
     /// to admins/superadmins regardless of what's stored here.
     #[serde(default = "default_true")]
     pub test: bool,
+    /// Club gatherings. On by default, like movie nights — it's a whole-club
+    /// event with a date people need to plan around.
+    #[serde(default = "default_true")]
+    pub gatherings: bool,
     /// Email delivery, per channel. Independent of the push flags above: a
     /// member can take movie night by email only, push only, or both.
     #[serde(default)]
@@ -504,6 +678,7 @@ impl Default for NotificationPrefs {
             chat: false,
             mountain_bike: false,
             test: true,
+            gatherings: true,
             email: EmailPrefs::default(),
         }
     }
@@ -518,6 +693,8 @@ pub struct UpdateNotificationPrefs {
     pub mountain_bike: Option<bool>,
     #[serde(default)]
     pub test: Option<bool>,
+    #[serde(default)]
+    pub gatherings: Option<bool>,
     #[serde(default)]
     pub email: Option<UpdateEmailPrefs>,
 }
@@ -537,6 +714,7 @@ pub struct EmailPrefs {
     pub general: bool,
     pub movie_night: bool,
     pub mountain_bike: bool,
+    pub gatherings: bool,
 }
 
 impl Default for EmailPrefs {
@@ -545,6 +723,9 @@ impl Default for EmailPrefs {
             announcements: false,
             general: false,
             movie_night: true,
+            // On by default alongside movie nights: a gathering has a fixed
+            // date, so a member who misses the push has missed the event.
+            gatherings: true,
             mountain_bike: false,
         }
     }
@@ -560,6 +741,7 @@ impl EmailPrefs {
             CHANNEL_GENERAL => self.general,
             CHANNEL_MOVIE_NIGHT => self.movie_night,
             CHANNEL_MOUNTAIN_BIKE => self.mountain_bike,
+            CHANNEL_GATHERINGS => self.gatherings,
             _ => false,
         }
     }
@@ -571,6 +753,7 @@ pub struct UpdateEmailPrefs {
     pub general: Option<bool>,
     pub movie_night: Option<bool>,
     pub mountain_bike: Option<bool>,
+    pub gatherings: Option<bool>,
 }
 
 /// Register (or refresh) an FCM device token for the current user.
@@ -639,6 +822,80 @@ pub struct ErrorResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn place(address: Option<&str>, lat: Option<f64>, lng: Option<f64>) -> GatheringPlace<'_> {
+        GatheringPlace { address, lat, lng }
+    }
+
+    const START: &str = "2026-09-01T18:30";
+
+    #[test]
+    fn a_gathering_needs_a_place() {
+        // The whole point of a gathering is that people can turn up to it.
+        let err = validate_gathering("Potluck", START, None, place(None, None, None)).unwrap_err();
+        assert!(err.contains("address or a pin"), "got: {err}");
+    }
+
+    #[test]
+    fn either_form_of_place_is_enough() {
+        assert!(validate_gathering("Potluck", START, None, place(Some("905 NW 10th St"), None, None)).is_ok());
+        assert!(validate_gathering("Potluck", START, None, place(None, Some(36.37), Some(-94.20))).is_ok());
+        assert!(validate_gathering("Potluck", START, None, place(Some("905 NW 10th St"), Some(36.37), Some(-94.20))).is_ok());
+    }
+
+    #[test]
+    fn a_blank_address_does_not_count_as_a_place() {
+        let err = validate_gathering("Potluck", START, None, place(Some("   "), None, None)).unwrap_err();
+        assert!(err.contains("address or a pin"), "got: {err}");
+    }
+
+    #[test]
+    fn half_a_pin_is_rejected() {
+        let err = validate_gathering("Potluck", START, None, place(Some("somewhere"), Some(36.37), None)).unwrap_err();
+        assert!(err.contains("both coordinates"), "got: {err}");
+    }
+
+    #[test]
+    fn pins_must_be_on_earth() {
+        let err = validate_gathering("Potluck", START, None, place(None, Some(91.0), Some(0.0))).unwrap_err();
+        assert!(err.contains("off the map"), "got: {err}");
+        let err = validate_gathering("Potluck", START, None, place(None, Some(0.0), Some(181.0))).unwrap_err();
+        assert!(err.contains("off the map"), "got: {err}");
+    }
+
+    #[test]
+    fn start_time_is_required_and_shaped() {
+        // Date alone won't do: a gathering states a time, unlike a movie night
+        // whose date comes out of a poll.
+        assert!(validate_gathering("Potluck", "2026-09-01", None, place(Some("x"), None, None)).is_err());
+        assert!(validate_gathering("Potluck", "", None, place(Some("x"), None, None)).is_err());
+        assert!(validate_gathering("Potluck", "2026-09-01T18:30", None, place(Some("x"), None, None)).is_ok());
+    }
+
+    #[test]
+    fn an_end_time_must_follow_the_start() {
+        let err = validate_gathering("Potluck", START, Some("2026-09-01T17:00"), place(Some("x"), None, None)).unwrap_err();
+        assert!(err.contains("end after it starts"), "got: {err}");
+        assert!(validate_gathering("Potluck", START, Some("2026-09-01T21:00"), place(Some("x"), None, None)).is_ok());
+        // Absent or blank is fine — an end time is optional.
+        assert!(validate_gathering("Potluck", START, None, place(Some("x"), None, None)).is_ok());
+        assert!(validate_gathering("Potluck", START, Some(""), place(Some("x"), None, None)).is_ok());
+    }
+
+    #[test]
+    fn a_title_is_required() {
+        let err = validate_gathering("  ", START, None, place(Some("x"), None, None)).unwrap_err();
+        assert!(err.contains("title"), "got: {err}");
+    }
+
+    #[test]
+    fn local_datetime_shape() {
+        assert!(valid_local_datetime("2026-09-01T18:30"));
+        assert!(!valid_local_datetime("2026-09-01T18:30:00")); // seconds
+        assert!(!valid_local_datetime("2026-9-01T18:30"));     // unpadded
+        assert!(!valid_local_datetime("2026-09-01 18:30"));    // space
+        assert!(!valid_local_datetime(""));
+    }
 
     fn ev(id: &str, date: Option<&str>, poll: Option<&str>) -> Event {
         Event {
@@ -744,7 +1001,7 @@ mod tests {
 
     #[test]
     fn email_allows_maps_channels_to_flags() {
-        let p = EmailPrefs { announcements: true, general: false, movie_night: true, mountain_bike: false };
+        let p = EmailPrefs { announcements: true, general: false, movie_night: true, mountain_bike: false, gatherings: true };
         assert!(p.allows(CHANNEL_ANNOUNCEMENTS));
         assert!(p.allows(CHANNEL_MOVIE_NIGHT));
         assert!(!p.allows(CHANNEL_GENERAL));
@@ -755,7 +1012,7 @@ mod tests {
     fn email_never_allows_chat_or_unknown_channels() {
         // Chat delivers via push_only and must never reach the email fan-out;
         // a channel added later has to opt in explicitly rather than inherit.
-        let p = EmailPrefs { announcements: true, general: true, movie_night: true, mountain_bike: true };
+        let p = EmailPrefs { announcements: true, general: true, movie_night: true, mountain_bike: true, gatherings: true };
         assert!(!p.allows(CHANNEL_CHAT));
         assert!(!p.allows(CHANNEL_TEST));
         assert!(!p.allows("something_new"));

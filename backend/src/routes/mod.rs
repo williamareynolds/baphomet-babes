@@ -4,6 +4,7 @@ pub mod calendar;
 pub mod chat;
 pub mod email;
 pub mod events;
+pub mod gatherings;
 pub mod invites;
 pub mod notifications;
 pub mod profile;

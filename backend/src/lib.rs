@@ -3,8 +3,10 @@ pub mod auth;
 pub mod email;
 pub mod error;
 pub mod fcm;
+pub mod geocode;
 pub mod models;
 pub mod routes;
+pub mod storage;
 
 use std::sync::Arc;
 use axum::{Router, http::{HeaderValue, Method}, response::IntoResponse, routing::get};
@@ -36,6 +38,9 @@ pub struct AppState {
     /// leaves that endpoint refusing every call, which is the right default
     /// for dev and for a production deploy that hasn't set the secret yet.
     pub reminder_secret: Option<String>,
+    /// Cloud Storage for uploaded images. `None` without a bucket configured,
+    /// where uploads fail with a clear message instead of half-working.
+    pub media: Option<storage::Media>,
 }
 
 /// Rate limit knobs — relaxed in tests, strict in production.
@@ -117,6 +122,7 @@ pub fn build_app(state: AppState, allowed_origins: Option<&str>, rate_limit: Rat
         .nest("/chat", routes::chat::router())
         .nest("/email", routes::email::router())
         .nest("/events", routes::events::router())
+        .nest("/gatherings", routes::gatherings::router())
         .nest("/invites", routes::invites::router())
         .nest("/profile", routes::profile::profile_router())
         .nest("/rides", routes::rides::router())

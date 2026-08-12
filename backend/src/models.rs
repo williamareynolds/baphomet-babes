@@ -60,6 +60,44 @@ pub struct EventDoc {
     pub created_at: i64,
 }
 
+/// A club gathering: stated date, time and place, no poll. Doc id is `id`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GatheringDoc {
+    pub id: String,
+    pub title: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Naive local datetime "YYYY-MM-DDTHH:MM"; lexicographic order is
+    /// chronological order, same as rides.
+    pub starts_at: String,
+    #[serde(default)]
+    pub ends_at: Option<String>,
+    /// At least one of `address` or the pin is always set — enforced on write
+    /// by `shared::validate_gathering`, not by the type.
+    #[serde(default)]
+    pub address: Option<String>,
+    #[serde(default)]
+    pub lat: Option<f64>,
+    #[serde(default)]
+    pub lng: Option<f64>,
+    #[serde(default)]
+    pub cover_url: Option<String>,
+    pub created_by: String,
+    pub created_at: i64,
+}
+
+/// One member going to a gathering. Doc id is `{gathering_id}_{user_id}` so
+/// RSVPing is an idempotent upsert and cancelling deletes it — the same shape
+/// as `RsvpDoc`. `author` is denormalized so the admin list needs no joins.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GatheringRsvpDoc {
+    pub id: String,
+    pub gathering_id: String,
+    pub user_id: String,
+    pub author: String,
+    pub created_at: i64,
+}
+
 /// One member's "going" RSVP to an event. Doc id is `{event_id}_{user_id}` so a
 /// member has at most one per event (idempotent upsert); cancelling deletes it.
 /// `author` is the denormalized display name so the admin list needs no joins.
@@ -148,6 +186,9 @@ pub struct NotifPrefsDoc {
     /// docs to carry `true`.
     #[serde(default = "default_true")]
     pub test: bool,
+    /// Club gatherings, on by default like movie nights.
+    #[serde(default = "default_true")]
+    pub gatherings: bool,
     /// Per-user inbox watermark: the feed hides notifications created at or
     /// before this unix-seconds time. "Clear" sets it to now. 0 = never cleared.
     #[serde(default)]
@@ -167,6 +208,8 @@ pub struct NotifPrefsDoc {
     pub email_movie_night: bool,
     #[serde(default)]
     pub email_mountain_bike: bool,
+    #[serde(default = "default_true")]
+    pub email_gatherings: bool,
 }
 
 /// Per-user calendar subscription token. Doc id is the user id, so regenerating

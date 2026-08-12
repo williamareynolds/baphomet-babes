@@ -38,6 +38,7 @@ async fn test_app(name: &str) -> Router {
         email: None,
         public_base_url: TEST_BASE_URL.into(),
         reminder_secret: Some(REMINDER_SECRET.into()),
+        media: None,
     };
     // Effectively unlimited so functional tests never trip the governor.
     build_app(state, None, RateLimit { per_second: 1, burst: 1_000_000 })
@@ -813,6 +814,7 @@ async fn rate_limiter_returns_json_429() {
         email: None,
         public_base_url: TEST_BASE_URL.into(),
         reminder_secret: Some(REMINDER_SECRET.into()),
+        media: None,
     };
     let app = build_app(state, None, RateLimit { per_second: 1, burst: 2 });
 
@@ -855,6 +857,7 @@ async fn cors_allows_configured_origin_only() {
         email: None,
         public_base_url: TEST_BASE_URL.into(),
         reminder_secret: Some(REMINDER_SECRET.into()),
+        media: None,
     };
     let app = build_app(
         state,
@@ -902,6 +905,7 @@ async fn app_check_blocks_direct_api_access() {
         email: None,
         public_base_url: TEST_BASE_URL.into(),
         reminder_secret: Some(REMINDER_SECRET.into()),
+        media: None,
     };
     let app = build_app(state, None, RateLimit { per_second: 1, burst: 1_000_000 });
 
@@ -1450,6 +1454,7 @@ async fn test_app_with_push(name: &str) -> (Router, mock_fcm::Recorder) {
         email: None,
         public_base_url: TEST_BASE_URL.into(),
         reminder_secret: Some(REMINDER_SECRET.into()),
+        media: None,
     };
     (build_app(state, None, RateLimit { per_second: 1, burst: 1_000_000 }), rec)
 }
@@ -1741,6 +1746,7 @@ async fn test_app_with_email(name: &str) -> (Router, mock_resend::Recorder) {
         )),
         public_base_url: TEST_BASE_URL.into(),
         reminder_secret: Some(REMINDER_SECRET.into()),
+        media: None,
     };
     (build_app(state, None, RateLimit { per_second: 1, burst: 1_000_000 }), rec)
 }
@@ -1989,4 +1995,247 @@ async fn poll_reminders_skip_events_that_are_not_open_for_voting() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["reminded"], 0);
     mail.expect_silence().await;
+}
+
+// ---- Gatherings ----
+//
+// The RSVP rule is the point of most of these: the count is public so a member
+// can see whether anyone's going, while the names are admin-only.
+
+/// Post a gathering as an admin and return its id.
+async fn create_gathering(app: &Router, admin: &str, body: Value) -> String {
+    let (status, g) = send(app, req("POST", "/gatherings", Some(admin), Some(body))).await;
+    assert_eq!(status, StatusCode::OK, "gathering create failed: {g}");
+    g["id"].as_str().unwrap().to_string()
+}
+
+#[tokio::test]
+async fn gathering_crud_and_admin_gating() {
+    if !emulator_available() { return; }
+    let app = test_app("gatherings-crud").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, _) = invite_and_register(&app, &root, "g1@test.com", "g1", "member").await;
+
+    // Members can't post: a gathering notifies the whole club.
+    let (status, _) = send(&app, req("POST", "/gatherings", Some(&member), Some(json!({
+        "title": "Sneaky", "starts_at": "2030-09-01T18:30", "address": "somewhere"
+    })))).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    let id = create_gathering(&app, &root, json!({
+        "title": "Bonfire",
+        "description": "Bring wood",
+        "starts_at": "2030-09-01T18:30",
+        "ends_at": "2030-09-01T22:00",
+        "address": "The quarry",
+        "lat": 36.3729,
+        "lng": -94.2088,
+    })).await;
+
+    // Everyone can read the list.
+    let (status, list) = send(&app, req("GET", "/gatherings", Some(&member), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(list.as_array().unwrap().len(), 1);
+    assert_eq!(list[0]["title"], "Bonfire");
+    assert_eq!(list[0]["lat"], 36.3729);
+    assert_eq!(list[0]["rsvp_count"], 0);
+
+    // Admins can edit. Moving the start past the stored end has to carry the
+    // end with it — the validator won't accept a gathering that ends before it
+    // begins, on an edit any more than on a create.
+    let (status, body) = send(&app, req("PUT", &format!("/gatherings/{id}"), Some(&root), Some(json!({
+        "starts_at": "2030-09-02T19:00"
+    })))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "stale end time must be caught");
+    assert!(body["error"].as_str().unwrap().contains("end after it starts"), "got: {body}");
+
+    let (status, updated) = send(&app, req("PUT", &format!("/gatherings/{id}"), Some(&root), Some(json!({
+        "title": "Bonfire (moved)", "starts_at": "2030-09-02T19:00", "ends_at": "2030-09-02T22:00"
+    })))).await;
+    assert_eq!(status, StatusCode::OK, "update failed: {updated}");
+    assert_eq!(updated["title"], "Bonfire (moved)");
+    assert_eq!(updated["starts_at"], "2030-09-02T19:00");
+    assert_eq!(updated["address"], "The quarry", "untouched fields keep their value");
+
+    // Members can't edit or delete.
+    let (status, _) = send(&app, req("PUT", &format!("/gatherings/{id}"), Some(&member), Some(json!({
+        "title": "Hijacked"
+    })))).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = send(&app, req("DELETE", &format!("/gatherings/{id}"), Some(&member), None)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    let (status, _) = send(&app, req("DELETE", &format!("/gatherings/{id}"), Some(&root), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, list) = send(&app, req("GET", "/gatherings", Some(&member), None)).await;
+    assert!(list.as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn gathering_needs_a_time_and_a_place() {
+    if !emulator_available() { return; }
+    let app = test_app("gatherings-validation").await;
+    let root = bootstrap_superadmin(&app).await;
+
+    // No address and no pin — nothing to turn up to.
+    let (status, body) = send(&app, req("POST", "/gatherings", Some(&root), Some(json!({
+        "title": "Nowhere", "starts_at": "2030-09-01T18:30"
+    })))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap().contains("address or a pin"), "got: {body}");
+
+    // A date with no time: gatherings state a time, unlike movie nights.
+    let (status, _) = send(&app, req("POST", "/gatherings", Some(&root), Some(json!({
+        "title": "Vague", "starts_at": "2030-09-01", "address": "somewhere"
+    })))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // End before start.
+    let (status, _) = send(&app, req("POST", "/gatherings", Some(&root), Some(json!({
+        "title": "Backwards", "starts_at": "2030-09-01T18:30",
+        "ends_at": "2030-09-01T17:00", "address": "somewhere"
+    })))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // Half a pin.
+    let (status, _) = send(&app, req("POST", "/gatherings", Some(&root), Some(json!({
+        "title": "Half", "starts_at": "2030-09-01T18:30", "lat": 36.37
+    })))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // A pin alone is enough — no address needed.
+    let (status, _) = send(&app, req("POST", "/gatherings", Some(&root), Some(json!({
+        "title": "Pinned", "starts_at": "2030-09-01T18:30", "lat": 36.37, "lng": -94.2
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn gathering_rsvp_count_is_public_but_names_are_not() {
+    if !emulator_available() { return; }
+    let app = test_app("gatherings-rsvp").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, _) = invite_and_register(&app, &root, "g2@test.com", "g2", "member").await;
+
+    let id = create_gathering(&app, &root, json!({
+        "title": "Potluck", "starts_at": "2030-10-01T18:00", "address": "Clubhouse"
+    })).await;
+
+    // RSVP, and the count everyone can see ticks up.
+    let (status, g) = send(&app, req("POST", &format!("/gatherings/{id}/rsvp"), Some(&member), Some(json!({
+        "going": true
+    })))).await;
+    assert_eq!(status, StatusCode::OK, "rsvp failed: {g}");
+    assert_eq!(g["rsvp_count"], 1);
+    assert_eq!(g["my_rsvp"], true);
+
+    // Re-RSVPing is idempotent, not a second head count.
+    let (_, g) = send(&app, req("POST", &format!("/gatherings/{id}/rsvp"), Some(&member), Some(json!({
+        "going": true
+    })))).await;
+    assert_eq!(g["rsvp_count"], 1);
+
+    // The count is visible to everyone…
+    let (_, list) = send(&app, req("GET", "/gatherings", Some(&root), None)).await;
+    assert_eq!(list[0]["rsvp_count"], 1);
+    assert_eq!(list[0]["my_rsvp"], false, "the admin has not RSVP'd");
+
+    // …but the names are admin-only.
+    let (status, _) = send(&app, req("GET", &format!("/gatherings/{id}/rsvps"), Some(&member), None)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "members must not see who's going");
+
+    let (status, names) = send(&app, req("GET", &format!("/gatherings/{id}/rsvps"), Some(&root), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(names.as_array().unwrap().len(), 1);
+    assert_eq!(names[0]["author"], "g2");
+
+    // Cancelling takes the count back down.
+    let (_, g) = send(&app, req("POST", &format!("/gatherings/{id}/rsvp"), Some(&member), Some(json!({
+        "going": false
+    })))).await;
+    assert_eq!(g["rsvp_count"], 0);
+    assert_eq!(g["my_rsvp"], false);
+}
+
+#[tokio::test]
+async fn deleting_a_gathering_takes_its_rsvps_with_it() {
+    if !emulator_available() { return; }
+    let app = test_app("gatherings-cascade").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, _) = invite_and_register(&app, &root, "g3@test.com", "g3", "member").await;
+
+    let id = create_gathering(&app, &root, json!({
+        "title": "Doomed", "starts_at": "2030-11-01T18:00", "address": "Clubhouse"
+    })).await;
+    let (_, _) = send(&app, req("POST", &format!("/gatherings/{id}/rsvp"), Some(&member), Some(json!({
+        "going": true
+    })))).await;
+
+    let (status, _) = send(&app, req("DELETE", &format!("/gatherings/{id}"), Some(&root), None)).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // A re-used id must not inherit the old guest list.
+    let same = create_gathering(&app, &root, json!({
+        "title": "Fresh", "starts_at": "2030-11-02T18:00", "address": "Clubhouse"
+    })).await;
+    let (_, names) = send(&app, req("GET", &format!("/gatherings/{same}/rsvps"), Some(&root), None)).await;
+    assert!(names.as_array().unwrap().is_empty());
+    let (_, list) = send(&app, req("GET", "/gatherings", Some(&root), None)).await;
+    assert_eq!(list[0]["rsvp_count"], 0);
+}
+
+#[tokio::test]
+async fn posting_a_gathering_emails_the_channel() {
+    if !emulator_available() { return; }
+    let (app, mail) = test_app_with_email("gatherings-email").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (_member, _) = invite_and_register(&app, &root, "g4@test.com", "g4", "member").await;
+    let (optout, _) = invite_and_register(&app, &root, "g5@test.com", "g5", "member").await;
+
+    // Gatherings default ON for email, so opting out has to be explicit.
+    let (status, prefs) = send(&app, req("PUT", "/notifications/prefs", Some(&optout), Some(json!({
+        "email": { "gatherings": false }
+    })))).await;
+    assert_eq!(status, StatusCode::OK, "prefs update failed: {prefs}");
+    assert_eq!(prefs["email"]["gatherings"], false);
+    assert_eq!(prefs["email"]["movie_night"], true, "other email channels untouched");
+
+    create_gathering(&app, &root, json!({
+        "title": "Bonfire", "starts_at": "2030-09-01T18:30", "address": "The quarry"
+    })).await;
+
+    mail.wait_for(2).await;
+    let mut got = mail.recipients();
+    got.sort();
+    assert_eq!(got, vec!["g4@test.com", "root@test.com"]);
+    assert_eq!(mail.requests()[0]["subject"], "New gathering: Bonfire");
+}
+
+#[tokio::test]
+async fn cover_upload_says_so_when_storage_is_unconfigured() {
+    if !emulator_available() { return; }
+    let app = test_app("gatherings-upload").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, _) = invite_and_register(&app, &root, "g6@test.com", "g6", "member").await;
+
+    // Members can't upload to a public bucket.
+    let (status, _) = send(&app, req("POST", "/gatherings/cover", Some(&member), Some(json!({
+        "content_type": "image/png", "data_base64": "aGk="
+    })))).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Non-images are refused before storage is even consulted, so this fails on
+    // the type rather than on the missing bucket.
+    let (status, body) = send(&app, req("POST", "/gatherings/cover", Some(&root), Some(json!({
+        "content_type": "text/html", "data_base64": "aGk="
+    })))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap().contains("JPEG"), "got: {body}");
+
+    // With no bucket configured the failure is explicit, not a 500.
+    let (status, body) = send(&app, req("POST", "/gatherings/cover", Some(&root), Some(json!({
+        "content_type": "image/png", "data_base64": "aGk="
+    })))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap().contains("aren't configured"), "got: {body}");
 }

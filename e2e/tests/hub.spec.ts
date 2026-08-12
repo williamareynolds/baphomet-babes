@@ -501,22 +501,22 @@ test("profile exposes notification settings", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Notifications" }),
   ).toBeVisible();
-  // Push channels: five, plus the admin-only test channel (root is a
+  // Push channels: six, plus the admin-only test channel (root is a
   // superadmin). Counted per group rather than in total, so adding a switch
   // elsewhere on the page doesn't quietly pass by shifting a single number.
   await expect(
     page.locator(".notif-channels").getByRole("switch"),
-  ).toHaveCount(6);
-  // Email channels: the four that can be emailed. Chat is absent by design —
+  ).toHaveCount(7);
+  // Email channels: the five that can be emailed. Chat is absent by design —
   // it delivers push-only and never reaches the email fan-out.
   await expect(
     page.locator(".email-channels").getByRole("switch"),
-  ).toHaveCount(4);
+  ).toHaveCount(5);
   await expect(
     page.locator(".email-channels").filter({ hasText: "Group Chat" }),
   ).toHaveCount(0);
   // Plus the standalone public-profile switch above the notification section.
-  await expect(page.getByRole("switch")).toHaveCount(11);
+  await expect(page.getByRole("switch")).toHaveCount(13);
   await expect(
     page.locator(".thaw-switch").filter({ hasText: "Test Messages (admins only)" }),
   ).toBeVisible();
@@ -743,19 +743,19 @@ test("members see no admin-only test channel controls", async ({ page }) => {
   await page.click('form button[type="submit"]');
   await expect(page.getByRole("button", { name: "Logout" })).toBeVisible();
 
-  // Their profile has the five regular push channels, no test channel, plus
-  // the four email channels and the public-profile switch.
+  // Their profile has the six regular push channels, no test channel, plus
+  // the five email channels and the public-profile switch.
   await page.goto("/profile");
   await expect(
     page.getByRole("heading", { name: "Notifications" }),
   ).toBeVisible();
   await expect(
     page.locator(".notif-channels").getByRole("switch"),
-  ).toHaveCount(5);
+  ).toHaveCount(6);
   await expect(
     page.locator(".email-channels").getByRole("switch"),
-  ).toHaveCount(4);
-  await expect(page.getByRole("switch")).toHaveCount(10);
+  ).toHaveCount(5);
+  await expect(page.getByRole("switch")).toHaveCount(12);
   await expect(
     page.locator(".thaw-switch").filter({ hasText: "Test Messages (admins only)" }),
   ).toHaveCount(0);
@@ -767,4 +767,77 @@ test("members see no admin-only test channel controls", async ({ page }) => {
   // Leave the session as root for any tests that follow.
   await page.evaluate(() => localStorage.clear());
   await login(page);
+});
+
+test("an admin posts a gathering, members RSVP, and names stay admin-only", async ({
+  page,
+}) => {
+  await login(page);
+  await page.goto("/gatherings");
+
+  await page.getByRole("button", { name: "Post a Gathering" }).click();
+  await page.getByPlaceholder("Bonfire at the quarry").fill("Quarry Bonfire");
+  // datetime-local inputs: the form requires a time, not just a date.
+  await page.locator('input[type="datetime-local"]').first().fill("2030-09-01T18:30");
+  await page
+    .getByPlaceholder("905 NW 10th St, Bentonville")
+    .fill("The old quarry");
+  await page.getByRole("button", { name: "Post Gathering" }).click();
+
+  const card = page.locator(".thaw-card").filter({ hasText: "Quarry Bonfire" });
+  await expect(card).toBeVisible();
+  await expect(card).toContainText("September 1, 2030");
+  await expect(card).toContainText("6:30 PM");
+  await expect(card).toContainText("Nobody going yet");
+
+  // RSVP flips the button and the public count.
+  await card.locator(".rsvp-btn").click();
+  await expect(card.locator(".rsvp-btn")).toContainText("Going");
+  await expect(card).toContainText("1 person going");
+
+  // An admin can see who's going.
+  await card.getByRole("button", { name: "View RSVPs" }).click();
+  await expect(card.locator(".rsvp-names li")).toHaveCount(1);
+});
+
+test("a member sees the gathering count but no attendee controls", async ({
+  page,
+}) => {
+  // Mint a member invite as root…
+  await login(page);
+  await page.goto("/admin/invites");
+  await page.getByPlaceholder("First name").fill("Wednesday");
+  await page.getByRole("button", { name: "Generate" }).click();
+  await expect(page.locator(".success")).toContainText("created and copied");
+  const inviteCard = page.locator(".thaw-card").filter({ hasText: "Wednesday" });
+  const code = ((await inviteCard.locator("code").first().textContent()) ?? "").trim();
+
+  // …and onboard them.
+  await page.evaluate(() => localStorage.clear());
+  await page.goto(`/login?code=${encodeURIComponent(code)}`);
+  const stamp = Date.now();
+  await page.fill("#reg-email", `wednesday-${stamp}@e2e.test`);
+  await page.fill("#reg-username", `wednesday${stamp}`);
+  await page.fill("#reg-password", "member-pw-123");
+  await page.click('form button[type="submit"]');
+  await expect(page.getByRole("button", { name: "Logout" })).toBeVisible();
+
+  await page.goto("/gatherings");
+  const card = page.locator(".thaw-card").filter({ hasText: "Quarry Bonfire" });
+  // The count is public — that's the point of splitting count from names.
+  await expect(card).toContainText("1 person going");
+  // The admin affordances are not theirs.
+  await expect(card.getByRole("button", { name: "View RSVPs" })).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "Delete" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Post a Gathering" })).toHaveCount(0);
+
+  // Clean up: back to root, remove the gathering for later serial tests.
+  await page.evaluate(() => localStorage.clear());
+  await login(page);
+  await page.goto("/gatherings");
+  const adminCard = page.locator(".thaw-card").filter({ hasText: "Quarry Bonfire" });
+  await adminCard.getByRole("button", { name: "Delete" }).click();
+  await expect(
+    page.locator(".thaw-card").filter({ hasText: "Quarry Bonfire" }),
+  ).toHaveCount(0);
 });

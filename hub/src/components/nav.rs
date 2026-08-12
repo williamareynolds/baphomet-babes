@@ -56,6 +56,7 @@ pub fn Nav(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                     <A href="/about">"About"</A>
                     <A href="/movie-nights">"Movie Nights"</A>
                     <A href="/rides">"Rides"</A>
+                    <A href="/gatherings">"Gatherings"</A>
                     <A href="/chat">"Chat"</A>
                     <A href="/members">"Members"</A>
                     <A href="/notifications">"Notifications"</A>

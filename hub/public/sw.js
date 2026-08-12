@@ -64,7 +64,8 @@ self.addEventListener("notificationclick", (event) => {
 // v5: expired-session handling — every client needs the new bundle to log out.
 // v6: email preference toggles + the voting-closes date on admin events.
 // v7: public voting deadline + undated screenings lead the list.
-const CACHE = "bb-shell-v7";
+// v8: gatherings — new page, nav link, and notification toggles.
+const CACHE = "bb-shell-v8";
 const SHELL = ["/"];
 
 self.addEventListener("install", (event) => {

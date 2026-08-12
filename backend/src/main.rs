@@ -62,6 +62,15 @@ async fn main() {
         tracing::warn!("REMINDER_SECRET unset — the poll-reminder endpoint will refuse all calls");
     }
 
+    // Image uploads need a bucket; without one the endpoint says so plainly.
+    let media = std::env::var("MEDIA_BUCKET")
+        .ok()
+        .filter(|b| !b.is_empty())
+        .map(|bucket| {
+            tracing::info!("media uploads enabled, bucket {bucket}");
+            backend::storage::Media::new(bucket)
+        });
+
     let db = FirestoreDb::new(&gcp_project)
         .await
         .expect("failed to connect to Firestore");
@@ -75,6 +84,7 @@ async fn main() {
         email,
         public_base_url,
         reminder_secret,
+        media,
     };
     let app = build_app(state, allowed_origins.as_deref(), RateLimit::default());
 

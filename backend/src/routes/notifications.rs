@@ -68,6 +68,7 @@ fn channel_default(channel: &str) -> bool {
         shared::CHANNEL_CHAT => d.chat,
         shared::CHANNEL_MOUNTAIN_BIKE => d.mountain_bike,
         shared::CHANNEL_TEST => d.test,
+        shared::CHANNEL_GATHERINGS => d.gatherings,
         _ => false,
     }
 }
@@ -80,6 +81,7 @@ fn prefs_for(channel: &str, p: &NotifPrefsDoc) -> bool {
         shared::CHANNEL_CHAT => p.chat,
         shared::CHANNEL_MOUNTAIN_BIKE => p.mountain_bike,
         shared::CHANNEL_TEST => p.test,
+        shared::CHANNEL_GATHERINGS => p.gatherings,
         _ => false,
     }
 }
@@ -201,11 +203,13 @@ async fn load_prefs(state: &AppState, user_id: &str) -> anyhow::Result<NotifPref
         chat: false,
         mountain_bike: false,
         test: true,
+        gatherings: true,
         cleared_at: 0,
         email_announcements: false,
         email_general: false,
         email_movie_night: true,
         email_mountain_bike: false,
+        email_gatherings: true,
     }))
 }
 
@@ -216,6 +220,7 @@ fn email_prefs(p: &NotifPrefsDoc) -> shared::EmailPrefs {
         general: p.email_general,
         movie_night: p.email_movie_night,
         mountain_bike: p.email_mountain_bike,
+        gatherings: p.email_gatherings,
     }
 }
 
@@ -232,6 +237,7 @@ async fn get_prefs(
         chat: p.chat,
         mountain_bike: p.mountain_bike,
         test: p.test,
+        gatherings: p.gatherings,
         email: email_prefs(&p),
     }))
 }
@@ -255,11 +261,13 @@ async fn update_prefs(
         chat: req.chat.unwrap_or(existing.chat),
         mountain_bike: req.mountain_bike.unwrap_or(existing.mountain_bike),
         test: req.test.unwrap_or(existing.test),
+        gatherings: req.gatherings.unwrap_or(existing.gatherings),
         cleared_at: existing.cleared_at,
         email_announcements: e.announcements.unwrap_or(existing.email_announcements),
         email_general: e.general.unwrap_or(existing.email_general),
         email_movie_night: e.movie_night.unwrap_or(existing.email_movie_night),
         email_mountain_bike: e.mountain_bike.unwrap_or(existing.email_mountain_bike),
+        email_gatherings: e.gatherings.unwrap_or(existing.email_gatherings),
     };
 
     let _: NotifPrefsDoc = state.db
@@ -279,6 +287,7 @@ async fn update_prefs(
         chat: updated.chat,
         mountain_bike: updated.mountain_bike,
         test: updated.test,
+        gatherings: updated.gatherings,
         email: email_prefs(&updated),
     }))
 }
@@ -492,6 +501,7 @@ pub(crate) async fn email_fanout(
                 general: p.email_general,
                 movie_night: p.email_movie_night,
                 mountain_bike: p.email_mountain_bike,
+                gatherings: p.email_gatherings,
             })
             .unwrap_or_default();
         if !wanted.allows(channel) {

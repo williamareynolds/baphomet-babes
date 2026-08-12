@@ -6,6 +6,10 @@ use shared::{
     UpdateAnnouncementRequest, UpdateEventRequest, UpdateNotificationPrefs, UpdateProfileRequest,
     UpdateRideRequest, UpdateUserRequest, UserSummary,
 };
+use shared::{
+    CreateGatheringRequest, Gathering, GeocodeRequest, GeocodeResponse, UploadImageRequest,
+    UploadImageResponse,
+};
 
 /// API base chosen at runtime from the page's hostname, so the URL can never be
 /// baked in wrong by a build flag: any *.baphometbabes.com host uses the
@@ -399,4 +403,44 @@ pub async fn fetch_users(token: &str) -> Result<Vec<UserSummary>, String> {
 
 pub async fn update_user(id: &str, req: UpdateUserRequest, token: &str) -> Result<UserSummary, String> {
     put_json(&format!("/users/{id}"), &req, token).await
+}
+
+// ---- Gatherings ----
+
+pub async fn fetch_gatherings(token: &str) -> Result<Vec<Gathering>, String> {
+    get("/gatherings", token).await
+}
+
+pub async fn create_gathering(req: CreateGatheringRequest, token: &str) -> Result<Gathering, String> {
+    post_json("/gatherings", &req, Some(token)).await
+}
+
+pub async fn delete_gathering(id: &str, token: &str) -> Result<(), String> {
+    delete(&format!("/gatherings/{id}"), token).await
+}
+
+pub async fn rsvp_gathering(id: &str, going: bool, token: &str) -> Result<Gathering, String> {
+    post_json(&format!("/gatherings/{id}/rsvp"), &RsvpRequest { going }, Some(token)).await
+}
+
+/// Admin-only: who's going. Members get a 403 here and see only the count.
+pub async fn fetch_gathering_rsvps(id: &str, token: &str) -> Result<Vec<Rsvp>, String> {
+    get(&format!("/gatherings/{id}/rsvps"), token).await
+}
+
+pub async fn upload_gathering_cover(
+    content_type: &str,
+    data_base64: &str,
+    token: &str,
+) -> Result<UploadImageResponse, String> {
+    let req = UploadImageRequest {
+        content_type: content_type.to_string(),
+        data_base64: data_base64.to_string(),
+    };
+    post_json("/gatherings/cover", &req, Some(token)).await
+}
+
+pub async fn geocode_address(query: &str, token: &str) -> Result<GeocodeResponse, String> {
+    let req = GeocodeRequest { query: query.to_string() };
+    post_json("/gatherings/geocode", &req, Some(token)).await
 }

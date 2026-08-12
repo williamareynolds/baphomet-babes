@@ -10,6 +10,7 @@ use crate::{
         admin_users::AdminUsersPage,
         announcements::AnnouncementsPage,
         chat::ChatPage,
+        gatherings::GatheringsPage,
         install::InstallPage,
         login::LoginPage,
         members::{MembersPage, MemberProfilePage},
@@ -83,6 +84,7 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/login") view=move || view! { <LoginPage auth=auth /> } />
                     <Route path=path!("/movie-nights") view=move || view! { <MovieNightsPage auth=auth /> } />
                     <Route path=path!("/rides") view=move || view! { <RidesPage auth=auth /> } />
+                    <Route path=path!("/gatherings") view=move || view! { <GatheringsPage auth=auth /> } />
                     <Route path=path!("/chat") view=move || view! { <ChatPage auth=auth /> } />
                     <Route path=path!("/install") view=|| view! { <InstallPage /> } />
                     <Route path=path!("/vote") view=move || view! { <VotePage auth=auth /> } />
