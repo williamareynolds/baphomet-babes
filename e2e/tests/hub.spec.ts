@@ -806,16 +806,24 @@ test("a member sees the gathering count but no attendee controls", async ({
   // Mint a member invite as root…
   await login(page);
   await page.goto("/admin/invites");
-  await page.getByPlaceholder("First name").fill("Wednesday");
+  // Unique per run: a fixed name matches leftover invites from an earlier run
+  // against the same emulator, and the card locator then resolves to two.
+  const stamp = Date.now();
+  const invitee = `Wednesday${stamp}`;
+  await page.getByPlaceholder("First name").fill(invitee);
   await page.getByRole("button", { name: "Generate" }).click();
   await expect(page.locator(".success")).toContainText("created and copied");
-  const inviteCard = page.locator(".thaw-card").filter({ hasText: "Wednesday" });
+  // Wait for the card itself before reading out of it: the list re-renders
+  // after Generate, and reading too early yields an empty code, which then
+  // fails several steps later at "why am I not logged in".
+  const inviteCard = page.locator(".thaw-card").filter({ hasText: invitee });
+  await expect(inviteCard).toBeVisible();
   const code = ((await inviteCard.locator("code").first().textContent()) ?? "").trim();
+  expect(code).not.toEqual("");
 
   // …and onboard them.
   await page.evaluate(() => localStorage.clear());
   await page.goto(`/login?code=${encodeURIComponent(code)}`);
-  const stamp = Date.now();
   await page.fill("#reg-email", `wednesday-${stamp}@e2e.test`);
   await page.fill("#reg-username", `wednesday${stamp}`);
   await page.fill("#reg-password", "member-pw-123");
