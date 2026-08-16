@@ -402,6 +402,60 @@ async fn events_date_is_optional() {
 }
 
 #[tokio::test]
+async fn setting_a_date_notifies_the_movie_night_channel() {
+    if !emulator_available() { return; }
+    let app = test_app("datenotify").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, _) = invite_and_register(&app, &root, "d@test.com", "dmember", "member").await;
+
+    // Undated: the create notice goes out, but nothing about a date.
+    let (status, created) = send(&app, req("POST", "/events", Some(&root), Some(json!({
+        "event_type": "main", "title": "Suspiria"
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+    let id = created["id"].as_str().unwrap().to_string();
+
+    // An edit that leaves the date alone adds nothing to the feed.
+    let (status, _) = send(&app, req("PUT", &format!("/events/{id}"), Some(&root), Some(json!({
+        "title": "Suspiria (1977)"
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, feed) = send(&app, req("GET", "/notifications", Some(&member), None)).await;
+    assert_eq!(feed.as_array().unwrap().len(), 1);
+
+    // Setting the date announces it, RSVP deadline included.
+    let (status, _) = send(&app, req("PUT", &format!("/events/{id}"), Some(&root), Some(json!({
+        "date": "2031-03-14", "rsvp_deadline": "2031-03-10"
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, feed) = send(&app, req("GET", "/notifications", Some(&member), None)).await;
+    let feed = feed.as_array().unwrap();
+    assert_eq!(feed.len(), 2);
+    let set = feed.iter().find(|n| n["title"] == "Date set: Suspiria (1977)").expect("date-set notice");
+    assert_eq!(set["channel"], "movie_night");
+    assert_eq!(set["body"], "It's happening 2031-03-14. RSVP by 2031-03-10.");
+    assert_eq!(set["url"], "/movie-nights");
+
+    // Moving it announces again, with different copy.
+    let (status, _) = send(&app, req("PUT", &format!("/events/{id}"), Some(&root), Some(json!({
+        "date": "2031-03-21"
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, feed) = send(&app, req("GET", "/notifications", Some(&member), None)).await;
+    let feed = feed.as_array().unwrap();
+    assert_eq!(feed.len(), 3);
+    assert!(feed.iter().any(|n| n["title"] == "Movie night moved: Suspiria (1977)"));
+
+    // Clearing it back to TBD stays quiet.
+    let (status, _) = send(&app, req("PUT", &format!("/events/{id}"), Some(&root), Some(json!({
+        "date": ""
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, feed) = send(&app, req("GET", "/notifications", Some(&member), None)).await;
+    assert_eq!(feed.as_array().unwrap().len(), 3);
+}
+
+#[tokio::test]
 async fn event_rsvp_flow() {
     if !emulator_available() { return; }
     let app = test_app("rsvp").await;

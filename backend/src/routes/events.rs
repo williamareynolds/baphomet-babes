@@ -92,6 +92,36 @@ pub fn needs_poll_reminder(e: &EventDoc, today: &str, cutoff: &str) -> bool {
     }
 }
 
+/// Notification copy for an admin edit that changed *when* the movie plays, or
+/// `None` if the edit left that alone.
+///
+/// Setting a date is the moment voting resolves into a plan, which is the thing
+/// members are actually waiting on, and a later move is the thing that wrecks
+/// their evening — so both announce. Clearing a date back to TBD stays quiet:
+/// that's an admin correcting themselves mid-edit, not news anyone can act on.
+pub fn date_change_notice(before: Option<&str>, updated: &EventDoc) -> Option<(String, String)> {
+    let after = updated.date.as_deref()?;
+    if before == Some(after) {
+        return None;
+    }
+
+    let mut body = match before {
+        Some(_) => format!("Moved to {after}."),
+        None => format!("It's happening {after}."),
+    };
+    // The RSVP ask rides along, since a newly dated screening is exactly when
+    // people are willing to commit.
+    if let Some(deadline) = updated.rsvp_deadline.as_deref() {
+        body.push_str(&format!(" RSVP by {deadline}."));
+    }
+
+    let heading = match before {
+        Some(_) => format!("Movie night moved: {}", updated.title),
+        None => format!("Date set: {}", updated.title),
+    };
+    Some((heading, body))
+}
+
 /// Compare two secrets without leaking their common prefix through timing.
 fn secret_eq(a: &str, b: &str) -> bool {
     let (a, b) = (a.as_bytes(), b.as_bytes());
@@ -336,6 +366,8 @@ async fn update_event(
         .context("failed to fetch event")?;
 
     let existing = existing.ok_or(AppError::NotFound)?;
+    // Captured before the merge below consumes `existing`.
+    let before_date = existing.date.clone();
 
     // Same clear/set/keep semantics as the other optional dates.
     let new_poll_deadline = match &req.poll_deadline {
@@ -385,6 +417,23 @@ async fn update_event(
         .execute()
         .await
         .context("failed to update event")?;
+
+    // Best-effort, same as the create path: a mail or push problem must not fail
+    // the edit the admin just made.
+    if let Some((title, body)) = date_change_notice(before_date.as_deref(), &updated) {
+        if let Err(e) = crate::routes::notifications::dispatch(
+            &state,
+            shared::CHANNEL_MOVIE_NIGHT,
+            &title,
+            &body,
+            Some("/movie-nights"),
+            None,
+        )
+        .await
+        {
+            tracing::warn!("event date notification failed: {e:#}");
+        }
+    }
 
     let count = count_rsvps(&state, &id).await?;
     Ok(Json(doc_to_event(updated, count, false)))
@@ -597,6 +646,44 @@ mod tests {
         let mut e = voting(Some("2026-08-08"));
         e.poll_reminder_sent_at = 1_754_000_000;
         assert!(!needs_poll_reminder(&e, TODAY, CUTOFF));
+    }
+
+    /// The same event once a date landed on it.
+    fn dated(date: &str) -> EventDoc {
+        EventDoc { date: Some(date.into()), ..voting(Some("2026-08-08")) }
+    }
+
+    #[test]
+    fn announces_a_newly_set_date() {
+        let (title, body) = date_change_notice(None, &dated("2026-09-01")).unwrap();
+        assert_eq!(title, "Date set: The Wicker Man");
+        assert_eq!(body, "It's happening 2026-09-01.");
+    }
+
+    #[test]
+    fn announces_a_moved_date() {
+        let (title, body) =
+            date_change_notice(Some("2026-09-01"), &dated("2026-09-08")).unwrap();
+        assert_eq!(title, "Movie night moved: The Wicker Man");
+        assert_eq!(body, "Moved to 2026-09-08.");
+    }
+
+    #[test]
+    fn rsvp_deadline_rides_along_when_set() {
+        let mut e = dated("2026-09-01");
+        e.rsvp_deadline = Some("2026-08-30".into());
+        let (_, body) = date_change_notice(None, &e).unwrap();
+        assert_eq!(body, "It's happening 2026-09-01. RSVP by 2026-08-30.");
+    }
+
+    #[test]
+    fn stays_quiet_when_the_date_did_not_change() {
+        // Editing the title or poster must not re-announce the same date.
+        assert!(date_change_notice(Some("2026-09-01"), &dated("2026-09-01")).is_none());
+        // Still undated after the edit — nothing to say.
+        assert!(date_change_notice(None, &voting(Some("2026-08-08"))).is_none());
+        // Cleared back to TBD: an admin fixing themselves, not news.
+        assert!(date_change_notice(Some("2026-09-01"), &voting(None)).is_none());
     }
 
     #[test]
