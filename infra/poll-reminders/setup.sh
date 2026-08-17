@@ -39,11 +39,20 @@ gcloud services enable cloudscheduler.googleapis.com --project "$PROJECT"
 # substitution" under `set -e`.
 if gcloud scheduler jobs describe "$JOB" --location "$REGION" --project "$PROJECT" >/dev/null 2>&1; then
   ACTION="update"
+  # `update http` has no --headers; it takes --update-headers (merge) instead.
+  # Passing the create-only flag here fails the command *and* echoes the
+  # rejected argument — secret included — into the terminal, so getting this
+  # right is what keeps a rotation from leaking the new value.
+  HEADER_FLAG="--update-headers"
   echo "==> Job '$JOB' exists; updating it"
 else
   ACTION="create"
+  HEADER_FLAG="--headers"
   echo "==> Creating Cloud Scheduler job '$JOB'"
 fi
+# Belt and braces: gcloud prints offending arguments on a usage error, so scrub
+# the secret out of anything this command emits before it reaches a terminal or
+# a CI log.
 gcloud scheduler jobs "$ACTION" http "$JOB" \
   --location "$REGION" \
   --project "$PROJECT" \
@@ -51,9 +60,10 @@ gcloud scheduler jobs "$ACTION" http "$JOB" \
   --time-zone "$TIMEZONE" \
   --uri "${SERVICE_URL}/events/poll-reminders" \
   --http-method POST \
-  --headers "X-Reminder-Secret=${REMINDER_SECRET}" \
+  "$HEADER_FLAG" "X-Reminder-Secret=${REMINDER_SECRET}" \
   --attempt-deadline 120s \
-  --max-retry-attempts 3
+  --max-retry-attempts 3 \
+  2>&1 | sed "s/${REMINDER_SECRET}/[redacted]/g"
 
 echo
 echo "Done. Fire it once by hand with:"
