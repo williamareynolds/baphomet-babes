@@ -814,6 +814,55 @@ pub struct CalendarToken {
     pub token: String,
 }
 
+/// A calendar link issued to someone who isn't a member — a partner, a regular
+/// guest — so they can subscribe to the schedule without an account.
+///
+/// Unlike a member token (one per user, keyed by user id), these are keyed by
+/// their own id, so one person can hold several and revoking one leaves the
+/// others alone. `name` and `phone` exist so a superadmin can tell whose link
+/// they're about to revoke; the phone number is the practical way to identify a
+/// non-member, since there's no profile to point at.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ExternalCalendarLink {
+    pub id: String,
+    pub name: String,
+    pub phone: String,
+    /// The capability token. Anyone holding it can read the feed, so the admin
+    /// list is the only place it's ever shown.
+    pub token: String,
+    pub created_at: i64,
+    /// Display label of the superadmin who issued it.
+    pub created_by: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateExternalCalendarRequest {
+    pub name: String,
+    pub phone: String,
+}
+
+pub const MAX_EXTERNAL_CALENDAR_NAME: usize = 100;
+
+/// Validate a new external calendar link. Both fields are required: a link with
+/// no one's name on it can't be audited, and the phone number is what makes
+/// "which Dave is this?" answerable a year from now.
+pub fn validate_external_calendar(name: &str, phone: &str) -> Result<(), String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("name is required".into());
+    }
+    if name.chars().count() > MAX_EXTERNAL_CALENDAR_NAME {
+        return Err(format!("name must be {MAX_EXTERNAL_CALENDAR_NAME} characters or fewer"));
+    }
+    if phone.trim().is_empty() {
+        return Err("phone number is required".into());
+    }
+    if phone_tel(phone.trim()).is_none() {
+        return Err("phone number doesn't look like a phone number".into());
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ErrorResponse {
     pub error: String,
@@ -825,6 +874,22 @@ mod tests {
 
     fn place(address: Option<&str>, lat: Option<f64>, lng: Option<f64>) -> GatheringPlace<'_> {
         GatheringPlace { address, lat, lng }
+    }
+
+    #[test]
+    fn external_calendar_needs_a_name_and_a_real_phone() {
+        assert!(validate_external_calendar("Dave", "555-123-4567").is_ok());
+        assert!(validate_external_calendar("  Dave  ", "+1 (555) 123-4567").is_ok());
+
+        assert!(validate_external_calendar("", "555-123-4567").is_err());
+        assert!(validate_external_calendar("   ", "555-123-4567").is_err());
+        assert!(validate_external_calendar("Dave", "").is_err());
+        // Not phone-shaped: too short, and letters aren't separators.
+        assert!(validate_external_calendar("Dave", "123").is_err());
+        assert!(validate_external_calendar("Dave", "call me").is_err());
+
+        let long = "x".repeat(MAX_EXTERNAL_CALENDAR_NAME + 1);
+        assert!(validate_external_calendar(&long, "555-123-4567").is_err());
     }
 
     const START: &str = "2026-09-01T18:30";

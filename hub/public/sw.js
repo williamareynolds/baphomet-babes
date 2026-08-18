@@ -66,7 +66,8 @@ self.addEventListener("notificationclick", (event) => {
 // v7: public voting deadline + undated screenings lead the list.
 // v8: gatherings — new page, nav link, and notification toggles.
 // v9: gathering edit + map buttons no longer submit the form.
-const CACHE = "bb-shell-v9";
+// v10: calendar links for non-members (superadmin admin tab).
+const CACHE = "bb-shell-v10";
 const SHELL = ["/"];
 
 self.addEventListener("install", (event) => {

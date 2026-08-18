@@ -7,8 +7,9 @@ use shared::{
     UpdateRideRequest, UpdateUserRequest, UserSummary,
 };
 use shared::{
-    CreateGatheringRequest, Gathering, GeocodeRequest, GeocodeResponse, UpdateGatheringRequest,
-    UploadImageRequest, UploadImageResponse,
+    CreateExternalCalendarRequest, CreateGatheringRequest, ExternalCalendarLink, Gathering,
+    GeocodeRequest, GeocodeResponse, UpdateGatheringRequest, UploadImageRequest,
+    UploadImageResponse,
 };
 
 /// API base chosen at runtime from the page's hostname, so the URL can never be
@@ -382,9 +383,27 @@ pub async fn regenerate_calendar_token(token: &str) -> Result<CalendarToken, Str
     post_json("/calendar/me/regenerate", &(), Some(token)).await
 }
 
-/// Public https URL of the member's .ics feed.
+/// Public https URL of a .ics feed — the same shape for a member's own token
+/// and for a link issued to a non-member.
 pub fn calendar_feed_url(feed_token: &str) -> String {
     format!("{}/calendar/{feed_token}/baphomet-babes.ics", api_base())
+}
+
+// ---- External (non-member) calendar links, superadmin only ----
+
+pub async fn fetch_external_calendars(token: &str) -> Result<Vec<ExternalCalendarLink>, String> {
+    get("/calendar/external", token).await
+}
+
+pub async fn create_external_calendar(
+    req: CreateExternalCalendarRequest,
+    token: &str,
+) -> Result<ExternalCalendarLink, String> {
+    post_json("/calendar/external", &req, Some(token)).await
+}
+
+pub async fn revoke_external_calendar(id: &str, token: &str) -> Result<(), String> {
+    delete(&format!("/calendar/external/{id}"), token).await
 }
 
 // ---- Group chat ----

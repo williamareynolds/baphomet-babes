@@ -5,6 +5,7 @@ use crate::{
         about::AboutPage,
         admin_announcements::AdminAnnouncementsPage,
         admin_broadcast::AdminBroadcastPage,
+        admin_calendar_links::AdminCalendarLinksPage,
         admin_events::AdminEventsPage,
         admin_invites::AdminInvitesPage,
         admin_users::AdminUsersPage,
@@ -97,6 +98,7 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/admin/events") view=move || view! { <AdminEventsPage auth=auth /> } />
                     <Route path=path!("/admin/invites") view=move || view! { <AdminInvitesPage auth=auth /> } />
                     <Route path=path!("/admin/users") view=move || view! { <AdminUsersPage auth=auth /> } />
+                    <Route path=path!("/admin/calendar-links") view=move || view! { <AdminCalendarLinksPage auth=auth /> } />
                 </Routes>
             </Router>
         </ConfigProvider>

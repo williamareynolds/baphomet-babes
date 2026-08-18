@@ -222,6 +222,21 @@ pub struct CalendarTokenDoc {
     pub created_at: i64,
 }
 
+/// A calendar link issued to a non-member. Same capability-URL shape as the
+/// per-member token, but keyed by its own id rather than a user id, so one
+/// person can hold several and each is revocable on its own. Revoking deletes
+/// the doc outright — the link 404s immediately and we stop holding a
+/// non-member's name and phone number.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExternalCalendarDoc {
+    pub id: String,
+    pub name: String,
+    pub phone: String,
+    pub token: String,
+    pub created_at: i64,
+    pub created_by: String,
+}
+
 /// Per-user unsubscribe token, same capability-URL shape as the calendar token
 /// above: doc id is the user id, lookup is by the `token` field. Deliberately
 /// separate from the calendar token so a link forwarded out of someone's inbox

@@ -451,6 +451,51 @@ test("admin generates a named invite and can copy it", async ({ page }) => {
   ).toHaveCount(0);
 });
 
+test("superadmin issues and revokes a calendar link for a non-member", async ({
+  page,
+}) => {
+  await login(page); // root is superadmin
+  await page.goto("/admin/invites");
+
+  // The tab is superadmin-only, so it renders alongside Users.
+  await expect(page.getByRole("link", { name: "Calendar links" })).toBeVisible();
+  await page.getByRole("link", { name: "Calendar links" }).click();
+  await expect(page).toHaveURL(/\/admin\/calendar-links$/);
+
+  const stamp = Date.now();
+  const guest = `Gomez${stamp}`;
+
+  // Both fields are required, and the phone has to look like one — checked in
+  // the browser before any request goes out.
+  await page.getByPlaceholder("Who is this for?").fill(guest);
+  await page.getByRole("button", { name: "Create link" }).click();
+  await expect(page.locator(".error")).toContainText("phone number is required");
+
+  await page.getByPlaceholder("555-123-4567").fill("nope");
+  await page.getByRole("button", { name: "Create link" }).click();
+  await expect(page.locator(".error")).toContainText("doesn't look like");
+
+  // A valid one lands in the list with its phone number and a copy button.
+  await page.getByPlaceholder("555-123-4567").fill("555-0123");
+  await page.getByRole("button", { name: "Create link" }).click();
+  await expect(page.locator(".success")).toContainText("created and copied");
+
+  // Scoped to the listing: the form's success message also quotes the name.
+  const list = page.locator(".calendar-link-list");
+  const card = list.locator(".thaw-card").filter({ hasText: guest });
+  await expect(card).toBeVisible();
+  await expect(card.getByText("555-0123")).toBeVisible();
+  await expect(card.getByRole("button", { name: "Copy link" })).toBeVisible();
+
+  // Revoking removes the record outright (confirm dialog auto-accepted).
+  page.on("dialog", (d) => d.accept());
+  await card.getByRole("button", { name: "Revoke" }).click();
+  await expect(page.locator(".success")).toContainText("revoked");
+  await expect(list.locator(".thaw-card").filter({ hasText: guest })).toHaveCount(
+    0,
+  );
+});
+
 test("a single-use invite link prefills register and onboards a member", async ({
   page,
 }) => {

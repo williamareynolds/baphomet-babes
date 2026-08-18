@@ -1,6 +1,7 @@
 pub mod about;
 pub mod admin_announcements;
 pub mod admin_broadcast;
+pub mod admin_calendar_links;
 pub mod admin_events;
 pub mod admin_invites;
 pub mod admin_users;

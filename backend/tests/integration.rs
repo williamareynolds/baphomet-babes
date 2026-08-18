@@ -767,6 +767,122 @@ async fn calendar_token_and_ics_feed() {
 }
 
 #[tokio::test]
+async fn external_calendar_links_are_superadmin_only_and_revocable() {
+    if !emulator_available() { return; }
+    let app = test_app("extcal").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, _) = invite_and_register(&app, &root, "x1@test.com", "xmember", "member").await;
+    let (admin, _) = invite_and_register(&app, &root, "x2@test.com", "xadmin", "admin").await;
+
+    let new_link = json!({ "name": "Dave (Ellen's partner)", "phone": "555-123-4567" });
+
+    // Neither members nor plain admins may issue or list links.
+    for who in [&member, &admin] {
+        let (status, _) = send(&app, req("POST", "/calendar/external", Some(who), Some(new_link.clone()))).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        let (status, _) = send(&app, req("GET", "/calendar/external", Some(who), None)).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+    let (status, _) = send(&app, req("GET", "/calendar/external", None, None)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    // Validation: both fields required, and the phone must be phone-shaped.
+    for bad in [
+        json!({ "name": "", "phone": "555-123-4567" }),
+        json!({ "name": "Dave", "phone": "" }),
+        json!({ "name": "Dave", "phone": "call me" }),
+    ] {
+        let (status, _) = send(&app, req("POST", "/calendar/external", Some(&root), Some(bad))).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    // Superadmin issues one.
+    let (status, link) = send(&app, req("POST", "/calendar/external", Some(&root), Some(new_link))).await;
+    assert_eq!(status, StatusCode::OK);
+    let id = link["id"].as_str().unwrap().to_string();
+    let token = link["token"].as_str().unwrap().to_string();
+    assert_eq!(link["name"], "Dave (Ellen's partner)");
+    assert!(!token.is_empty());
+
+    // Seed an event, then confirm the non-member's feed serves the same calendar.
+    let (status, _) = send(&app, req("POST", "/events", Some(&root), Some(json!({
+        "event_type": "main", "title": "Hausu", "date": "2030-06-01"
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let feed_path = format!("/calendar/{token}/baphomet-babes.ics");
+    let resp = app.clone().oneshot(req("GET", &feed_path, None, None)).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK, "guest feed readable anonymously");
+    let body = String::from_utf8(resp.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
+    assert!(body.contains("SUMMARY:Hausu"));
+
+    // It shows up in the admin list, phone included.
+    let (status, list) = send(&app, req("GET", "/calendar/external", Some(&root), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    let list = list.as_array().unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0]["phone"], "555-123-4567");
+    assert_eq!(list[0]["created_by"], "root");
+
+    // Members and admins can't revoke it either.
+    let (status, _) = send(&app, req("DELETE", &format!("/calendar/external/{id}"), Some(&admin), None)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Revoke: the link dies immediately and the record is gone.
+    let (status, _) = send(&app, req("DELETE", &format!("/calendar/external/{id}"), Some(&root), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _) = send(&app, req("GET", &feed_path, None, None)).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "revoked link stops working");
+    let (_, list) = send(&app, req("GET", "/calendar/external", Some(&root), None)).await;
+    assert!(list.as_array().unwrap().is_empty(), "revoke deletes the record");
+
+    // Revoking twice is a clean 404, not a 500.
+    let (status, _) = send(&app, req("DELETE", &format!("/calendar/external/{id}"), Some(&root), None)).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn calendar_feed_carries_voting_and_rsvp_deadlines() {
+    if !emulator_available() { return; }
+    let app = test_app("caldeadline").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, _) = invite_and_register(&app, &root, "cd@test.com", "cdfan", "member").await;
+    let (_, t) = send(&app, req("GET", "/calendar/me", Some(&member), None)).await;
+    let token = t["token"].as_str().unwrap().to_string();
+
+    // An event mid-vote: no date, poll open, deadline set.
+    let (status, _) = send(&app, req("POST", "/events", Some(&root), Some(json!({
+        "event_type": "main", "title": "Possession",
+        "poll_embed_url": "https://rcv123.org/p/9", "poll_deadline": "2030-05-01"
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // A scheduled event with an RSVP deadline.
+    let (status, _) = send(&app, req("POST", "/events", Some(&root), Some(json!({
+        "event_type": "main", "title": "Videodrome",
+        "date": "2030-07-04", "rsvp_deadline": "2030-06-30"
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let resp = app.clone()
+        .oneshot(req("GET", &format!("/calendar/{token}/baphomet-babes.ics"), None, None))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = String::from_utf8(resp.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap();
+
+    // The undated one appears only as its voting deadline...
+    assert!(body.contains("SUMMARY:Voting closes: Possession"));
+    assert!(body.contains("DTSTART;VALUE=DATE:20300501"));
+    assert!(body.contains("https://rcv123.org/p/9"));
+    // ...and the dated one appears twice: the screening and the RSVP deadline.
+    assert!(body.contains("SUMMARY:Videodrome"));
+    assert!(body.contains("SUMMARY:RSVP by today: Videodrome"));
+    assert!(body.contains("DTSTART;VALUE=DATE:20300630"));
+    assert!(body.contains("TRIGGER;RELATED=START:PT9H"));
+}
+
+#[tokio::test]
 async fn profile_lifecycle_and_visibility() {
     if !emulator_available() { return; }
     let app = test_app("profiles").await;
