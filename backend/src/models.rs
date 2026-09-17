@@ -181,6 +181,10 @@ pub struct NotifPrefsDoc {
     /// Opt-in like chat: only members who ride should get ride pushes.
     #[serde(default)]
     pub mountain_bike: bool,
+    /// Opt-in: off until the member joins the Book Club, at which point the
+    /// join handler flips this (and `email_book_club`) on explicitly.
+    #[serde(default)]
+    pub book_club: bool,
     /// Admin-only test channel. Defaults on; the fanout restricts delivery to
     /// admins/superadmins no matter what this says, so it's safe for members'
     /// docs to carry `true`.
@@ -210,6 +214,8 @@ pub struct NotifPrefsDoc {
     pub email_mountain_bike: bool,
     #[serde(default = "default_true")]
     pub email_gatherings: bool,
+    #[serde(default)]
+    pub email_book_club: bool,
 }
 
 /// Per-user calendar subscription token. Doc id is the user id, so regenerating
@@ -290,4 +296,68 @@ pub struct ProfileDoc {
     pub links: Vec<ProfileLink>,
     pub is_public: bool,
     pub updated_at: i64,
+}
+
+/// A Book Club pick: the current book, something queued, or an archived past
+/// read. `status` distinguishes them; `position` orders the queue.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BookClubBookDoc {
+    pub id: String,
+    pub title: String,
+    pub author: String,
+    #[serde(default)]
+    pub published: Option<String>,
+    #[serde(default)]
+    pub why: Option<String>,
+    #[serde(default)]
+    pub cover_url: Option<String>,
+    /// "current" | "queued" | "archived".
+    pub status: String,
+    /// Queue order for "queued" books; unused (0) otherwise.
+    #[serde(default)]
+    pub position: i64,
+    #[serde(default)]
+    pub started_at: Option<i64>,
+    #[serde(default)]
+    pub finished_at: Option<i64>,
+    pub created_by: String,
+    pub created_at: i64,
+}
+
+/// A member's ongoing Book Club membership. Doc id is the user id, so joining
+/// is an idempotent upsert and leaving deletes it — same shape as
+/// `GatheringRsvpDoc`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BookClubMemberDoc {
+    pub id: String,
+    pub user_id: String,
+    pub author: String,
+    pub joined_at: i64,
+}
+
+/// The single upcoming meetup. Doc id is fixed since the club has at most one
+/// scheduled at a time.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BookClubMeetupDoc {
+    pub id: String,
+    pub starts_at: String,
+    pub host: String,
+    #[serde(default)]
+    pub address: Option<String>,
+    #[serde(default)]
+    pub lat: Option<f64>,
+    #[serde(default)]
+    pub lng: Option<f64>,
+    pub updated_at: i64,
+}
+
+/// One member's RSVP to the next meetup. Doc id is the user id — like
+/// `RideAttendeeDoc`, names here are visible to every member, not admin-only
+/// like `GatheringRsvpDoc`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BookClubMeetupRsvpDoc {
+    pub id: String,
+    pub user_id: String,
+    pub author: String,
+    pub created_at: i64,
 }

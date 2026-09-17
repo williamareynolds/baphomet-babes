@@ -2,21 +2,21 @@ use auth_client::{AuthUser, load_auth, refresh_push};
 use crate::{
     components::{nav::Nav, notify_onboard::NotifyOnboard},
     pages::{
-        about::AboutPage,
         admin_announcements::AdminAnnouncementsPage,
+        admin_book_club::AdminBookClubPage,
         admin_broadcast::AdminBroadcastPage,
         admin_calendar_links::AdminCalendarLinksPage,
         admin_events::AdminEventsPage,
         admin_invites::AdminInvitesPage,
         admin_users::AdminUsersPage,
         announcements::AnnouncementsPage,
+        book_club::BookClubPage,
         chat::ChatPage,
         gatherings::GatheringsPage,
         install::InstallPage,
         login::LoginPage,
         members::{MembersPage, MemberProfilePage},
         movie_nights::MovieNightsPage,
-        notifications::NotificationsPage,
         profile::ProfilePage,
         rides::RidesPage,
         vote::VotePage,
@@ -81,9 +81,9 @@ pub fn App() -> impl IntoView {
                 <NotifyOnboard auth=auth />
                 <Routes fallback=|| view! { <main><p>"Page not found."</p></main> }>
                     <Route path=path!("/") view=move || view! { <AnnouncementsPage auth=auth /> } />
-                    <Route path=path!("/about") view=|| view! { <AboutPage /> } />
                     <Route path=path!("/login") view=move || view! { <LoginPage auth=auth /> } />
                     <Route path=path!("/movie-nights") view=move || view! { <MovieNightsPage auth=auth /> } />
+                    <Route path=path!("/book-club") view=move || view! { <BookClubPage auth=auth /> } />
                     <Route path=path!("/rides") view=move || view! { <RidesPage auth=auth /> } />
                     <Route path=path!("/gatherings") view=move || view! { <GatheringsPage auth=auth /> } />
                     <Route path=path!("/chat") view=move || view! { <ChatPage auth=auth /> } />
@@ -91,11 +91,11 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/vote") view=move || view! { <VotePage auth=auth /> } />
                     <Route path=path!("/members") view=move || view! { <MembersPage auth=auth /> } />
                     <Route path=path!("/members/:id") view=move || view! { <MemberProfilePage auth=auth /> } />
-                    <Route path=path!("/notifications") view=move || view! { <NotificationsPage auth=auth /> } />
                     <Route path=path!("/profile") view=move || view! { <ProfilePage auth=auth /> } />
                     <Route path=path!("/admin/announcements") view=move || view! { <AdminAnnouncementsPage auth=auth /> } />
                     <Route path=path!("/admin/broadcast") view=move || view! { <AdminBroadcastPage auth=auth /> } />
                     <Route path=path!("/admin/events") view=move || view! { <AdminEventsPage auth=auth /> } />
+                    <Route path=path!("/admin/book-club") view=move || view! { <AdminBookClubPage auth=auth /> } />
                     <Route path=path!("/admin/invites") view=move || view! { <AdminInvitesPage auth=auth /> } />
                     <Route path=path!("/admin/users") view=move || view! { <AdminUsersPage auth=auth /> } />
                     <Route path=path!("/admin/calendar-links") view=move || view! { <AdminCalendarLinksPage auth=auth /> } />

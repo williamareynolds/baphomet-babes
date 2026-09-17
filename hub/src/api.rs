@@ -1,7 +1,7 @@
 use shared::{
     Announcement, AuthResponse, BroadcastRequest, CalendarToken, ChatMessage,
     CreateAnnouncementRequest, CreateEventRequest, CreateInviteRequest, CreateRideRequest, Event,
-    InviteCode, LoginRequest, Notification, NotificationPrefs, Profile, RegisterPushTokenRequest,
+    InviteCode, LoginRequest, NotificationPrefs, Profile, RegisterPushTokenRequest,
     RegisterRequest, Ride, Rsvp, RsvpRequest, SendChatRequest, TestPushResponse,
     UpdateAnnouncementRequest, UpdateEventRequest, UpdateNotificationPrefs, UpdateProfileRequest,
     UpdateRideRequest, UpdateUserRequest, UserSummary,
@@ -10,6 +10,10 @@ use shared::{
     CreateExternalCalendarRequest, CreateGatheringRequest, ExternalCalendarLink, Gathering,
     GeocodeRequest, GeocodeResponse, UpdateGatheringRequest, UploadImageRequest,
     UploadImageResponse,
+};
+use shared::{
+    BookClubBook, BookClubMeetup, BookClubStatus, CreateBookClubBookRequest, MoveDirection,
+    MoveQueueRequest, UpdateBookClubBookRequest, UpdateBookClubMeetupRequest,
 };
 
 /// API base chosen at runtime from the page's hostname, so the URL can never be
@@ -341,14 +345,6 @@ pub async fn attend_ride(id: &str, going: bool, token: &str) -> Result<Ride, Str
 
 // ---- Notifications ----
 
-pub async fn fetch_notifications(token: &str) -> Result<Vec<Notification>, String> {
-    get("/notifications", token).await
-}
-
-pub async fn clear_notifications(token: &str) -> Result<(), String> {
-    post_unit("/notifications/clear", &(), token).await
-}
-
 pub async fn fetch_notif_prefs(token: &str) -> Result<NotificationPrefs, String> {
     get("/notifications/prefs", token).await
 }
@@ -466,4 +462,77 @@ pub async fn upload_gathering_cover(
 pub async fn geocode_address(query: &str, token: &str) -> Result<GeocodeResponse, String> {
     let req = GeocodeRequest { query: query.to_string() };
     post_json("/gatherings/geocode", &req, Some(token)).await
+}
+
+// ---- Book Club ----
+
+pub async fn fetch_book_club_current(token: &str) -> Result<BookClubStatus, String> {
+    get("/book-club/current", token).await
+}
+
+pub async fn fetch_book_club_meetup(token: &str) -> Result<Option<BookClubMeetup>, String> {
+    get("/book-club/meetup", token).await
+}
+
+pub async fn rsvp_book_club_meetup(going: bool, token: &str) -> Result<BookClubMeetup, String> {
+    post_json("/book-club/meetup/rsvp", &RsvpRequest { going }, Some(token)).await
+}
+
+pub async fn fetch_book_club_archive(token: &str) -> Result<Vec<BookClubBook>, String> {
+    get("/book-club/archive", token).await
+}
+
+pub async fn join_book_club(token: &str) -> Result<BookClubStatus, String> {
+    post_json("/book-club/join", &(), Some(token)).await
+}
+
+pub async fn leave_book_club(token: &str) -> Result<BookClubStatus, String> {
+    post_json("/book-club/leave", &(), Some(token)).await
+}
+
+/// Admin-only: the queue, never shown to members.
+pub async fn fetch_book_club_queue(token: &str) -> Result<Vec<BookClubBook>, String> {
+    get("/book-club/queue", token).await
+}
+
+pub async fn add_book_club_queue_item(req: CreateBookClubBookRequest, token: &str) -> Result<BookClubBook, String> {
+    post_json("/book-club/queue", &req, Some(token)).await
+}
+
+pub async fn move_book_club_queue_item(id: &str, direction: MoveDirection, token: &str) -> Result<Vec<BookClubBook>, String> {
+    post_json(&format!("/book-club/queue/{id}/move"), &MoveQueueRequest { direction }, Some(token)).await
+}
+
+pub async fn remove_book_club_queue_item(id: &str, token: &str) -> Result<(), String> {
+    delete(&format!("/book-club/queue/{id}"), token).await
+}
+
+pub async fn update_book_club_current(req: UpdateBookClubBookRequest, token: &str) -> Result<BookClubBook, String> {
+    put_json("/book-club/current", &req, token).await
+}
+
+/// Archives the current book (if any) and promotes the front of the queue.
+pub async fn finish_book_club_book(token: &str) -> Result<BookClubStatus, String> {
+    post_json("/book-club/finish", &(), Some(token)).await
+}
+
+pub async fn update_book_club_meetup(req: UpdateBookClubMeetupRequest, token: &str) -> Result<BookClubMeetup, String> {
+    put_json("/book-club/meetup", &req, token).await
+}
+
+pub async fn upload_book_club_cover(
+    content_type: &str,
+    data_base64: &str,
+    token: &str,
+) -> Result<UploadImageResponse, String> {
+    let req = UploadImageRequest {
+        content_type: content_type.to_string(),
+        data_base64: data_base64.to_string(),
+    };
+    post_json("/book-club/cover", &req, Some(token)).await
+}
+
+pub async fn geocode_book_club_address(query: &str, token: &str) -> Result<GeocodeResponse, String> {
+    let req = GeocodeRequest { query: query.to_string() };
+    post_json("/book-club/geocode", &req, Some(token)).await
 }

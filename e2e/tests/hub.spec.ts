@@ -22,6 +22,29 @@ async function login(page: Page, email = EMAIL, password = PASSWORD) {
   if (await dismiss.isVisible().catch(() => false)) await dismiss.click();
 }
 
+// The notifications inbox has no page of its own (removed along with /about);
+// these hit the backend feed directly with the logged-in member's token,
+// preserving the same regression coverage the deleted page used to give.
+async function inboxFeed(page: Page): Promise<{ channel: string; title: string }[]> {
+  return page.evaluate(async () => {
+    const auth = JSON.parse(localStorage.getItem("auth_user") ?? "{}");
+    const res = await fetch("http://localhost:8080/notifications", {
+      headers: { Authorization: `Bearer ${auth.token}` },
+    });
+    return res.json();
+  });
+}
+
+async function clearInbox(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    const auth = JSON.parse(localStorage.getItem("auth_user") ?? "{}");
+    await fetch("http://localhost:8080/notifications/clear", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${auth.token}` },
+    });
+  });
+}
+
 test("register the bootstrap superadmin", async ({ page }) => {
   await page.goto("/login");
   await page.getByRole("button", { name: "Register" }).click();
@@ -546,22 +569,23 @@ test("profile exposes notification settings", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Notifications" }),
   ).toBeVisible();
-  // Push channels: six, plus the admin-only test channel (root is a
-  // superadmin). Counted per group rather than in total, so adding a switch
-  // elsewhere on the page doesn't quietly pass by shifting a single number.
+  // Push channels: seven (including Book Club), plus the admin-only test
+  // channel (root is a superadmin). Counted per group rather than in total,
+  // so adding a switch elsewhere on the page doesn't quietly pass by shifting
+  // a single number.
   await expect(
     page.locator(".notif-channels").getByRole("switch"),
-  ).toHaveCount(7);
-  // Email channels: the five that can be emailed. Chat is absent by design —
+  ).toHaveCount(8);
+  // Email channels: the six that can be emailed. Chat is absent by design —
   // it delivers push-only and never reaches the email fan-out.
   await expect(
     page.locator(".email-channels").getByRole("switch"),
-  ).toHaveCount(5);
+  ).toHaveCount(6);
   await expect(
     page.locator(".email-channels").filter({ hasText: "Group Chat" }),
   ).toHaveCount(0);
   // Plus the standalone public-profile switch above the notification section.
-  await expect(page.getByRole("switch")).toHaveCount(13);
+  await expect(page.getByRole("switch")).toHaveCount(15);
   await expect(
     page.locator(".thaw-switch").filter({ hasText: "Test Messages (admins only)" }),
   ).toBeVisible();
@@ -586,12 +610,9 @@ test("an admin announcement lands in the notifications inbox", async ({
   await page.getByRole("button", { name: "Post Announcement" }).click();
   await expect(page.locator(".success")).toHaveText("Announcement posted!");
 
-  await page.goto("/notifications");
-  const card = page
-    .locator(".thaw-card")
-    .filter({ hasText: "Spooky Season Kickoff" });
-  await expect(card).toBeVisible();
-  await expect(card.locator(".badge-announcements")).toHaveText("Announcement");
+  const feed = await inboxFeed(page);
+  const entry = feed.find((n) => n.title === "Spooky Season Kickoff");
+  expect(entry?.channel).toBe("announcements");
 });
 
 test("an admin broadcast reaches the inbox on the General channel", async ({
@@ -606,10 +627,9 @@ test("an admin broadcast reaches the inbox on the General channel", async ({
   await page.getByRole("button", { name: "Send Broadcast" }).click();
   await expect(page.locator(".success")).toContainText("Broadcast sent");
 
-  await page.goto("/notifications");
-  const card = page.locator(".thaw-card").filter({ hasText: "Bingo Night" });
-  await expect(card).toBeVisible();
-  await expect(card.locator(".badge-general")).toHaveText("General");
+  const feed = await inboxFeed(page);
+  const entry = feed.find((n) => n.title === "Bingo Night");
+  expect(entry?.channel).toBe("general");
 });
 
 test("group chat sends and shows a message", async ({ page }) => {
@@ -630,8 +650,8 @@ test("group chat sends and shows a message", async ({ page }) => {
   );
 
   // Chat is push-only — it must not appear in the notifications inbox.
-  await page.goto("/notifications");
-  await expect(page.locator(".badge-chat")).toHaveCount(0);
+  const feed = await inboxFeed(page);
+  expect(feed.some((n) => n.channel === "chat")).toBe(false);
 });
 
 test("voting is open while undated and closes once a date is set", async ({
@@ -701,13 +721,11 @@ test("voting is open while undated and closes once a date is set", async ({
 
 test("clearing the inbox empties it", async ({ page }) => {
   await login(page);
-  await page.goto("/notifications");
   // Prior tests posted announcements/broadcasts, so the feed is non-empty.
-  await expect(page.locator(".thaw-card").first()).toBeVisible();
+  expect((await inboxFeed(page)).length).toBeGreaterThan(0);
 
-  await page.getByRole("button", { name: "Clear" }).click();
-  await expect(page.getByText("No notifications yet.")).toBeVisible();
-  await expect(page.locator(".thaw-card")).toHaveCount(0);
+  await clearInbox(page);
+  expect(await inboxFeed(page)).toHaveLength(0);
 });
 
 test("exactly one service worker owns the root scope", async ({ page }) => {
@@ -761,10 +779,8 @@ test("test broadcasts stay out of the inbox", async ({ page }) => {
     "only admins receive it",
   );
 
-  await page.goto("/notifications");
-  await expect(
-    page.locator(".thaw-card").filter({ hasText: "Pipeline probe" }),
-  ).toHaveCount(0);
+  const feed = await inboxFeed(page);
+  expect(feed.some((n) => n.title === "Pipeline probe")).toBe(false);
 });
 
 test("members see no admin-only test channel controls", async ({ page }) => {
@@ -788,19 +804,19 @@ test("members see no admin-only test channel controls", async ({ page }) => {
   await page.click('form button[type="submit"]');
   await expect(page.getByRole("button", { name: "Logout" })).toBeVisible();
 
-  // Their profile has the six regular push channels, no test channel, plus
-  // the five email channels and the public-profile switch.
+  // Their profile has the seven regular push channels (including Book Club),
+  // no test channel, plus the six email channels and the public-profile switch.
   await page.goto("/profile");
   await expect(
     page.getByRole("heading", { name: "Notifications" }),
   ).toBeVisible();
   await expect(
     page.locator(".notif-channels").getByRole("switch"),
-  ).toHaveCount(6);
+  ).toHaveCount(7);
   await expect(
     page.locator(".email-channels").getByRole("switch"),
-  ).toHaveCount(5);
-  await expect(page.getByRole("switch")).toHaveCount(12);
+  ).toHaveCount(6);
+  await expect(page.getByRole("switch")).toHaveCount(14);
   await expect(
     page.locator(".thaw-switch").filter({ hasText: "Test Messages (admins only)" }),
   ).toHaveCount(0);
@@ -953,4 +969,113 @@ test("map buttons don't post the form, and a gathering can be edited", async ({
   await expect(
     page.locator(".thaw-card").filter({ hasText: "Edited Already" }),
   ).toHaveCount(0);
+});
+
+test("admin builds the book club queue, promotes a book, and a member joins", async ({
+  page,
+}) => {
+  await login(page);
+  await page.goto("/admin/book-club");
+  await expect(page.getByText("Between books — nothing current.")).toBeVisible();
+
+  await page.getByRole("button", { name: "+ Add to queue" }).click();
+  await page.getByPlaceholder("Wide Sargasso Sea").fill("The Bloody Chamber");
+  await page.getByPlaceholder("Jean Rhys").fill("Angela Carter");
+  await page.getByPlaceholder("1966").fill("1979");
+  await page.getByRole("button", { name: "Add to queue" }).click();
+  await expect(page.locator(".success")).toContainText("Added to the queue");
+
+  await page.getByRole("button", { name: "Finish & start next" }).click();
+  await expect(page.locator(".success")).toContainText("Moved on to the next book");
+  await expect(
+    page.locator(".mn-title").filter({ hasText: "The Bloody Chamber" }),
+  ).toBeVisible();
+
+  // The public page shows it as current, with nobody reading yet.
+  await page.goto("/book-club");
+  await expect(page.getByText("Now Reading")).toBeVisible();
+  await expect(page.locator(".feature-title")).toHaveText("The Bloody Chamber");
+  await expect(page.getByText("0 members reading")).toBeVisible();
+
+  // Joining flips the button, the count, and the profile notification channel.
+  await page.getByRole("button", { name: "Join the Book Club" }).click();
+  await expect(page.getByRole("button", { name: /In the club/ })).toBeVisible();
+  await expect(page.getByText("1 member reading")).toBeVisible();
+
+  await page.goto("/profile");
+  await expect(
+    page
+      .locator(".notif-channels .thaw-switch")
+      .filter({ hasText: "Book Club" })
+      .getByRole("switch"),
+  ).toBeChecked();
+
+  // Leaving flips it back off, and doesn't disturb later channel-count tests.
+  await page.goto("/book-club");
+  await page.getByRole("button", { name: /In the club/ }).click();
+  await expect(page.getByRole("button", { name: "Join the Book Club" })).toBeVisible();
+  await page.goto("/profile");
+  await expect(
+    page
+      .locator(".notif-channels .thaw-switch")
+      .filter({ hasText: "Book Club" })
+      .getByRole("switch"),
+  ).not.toBeChecked();
+});
+
+test("admin sets a meetup and a member RSVPs with their name visible", async ({
+  page,
+}) => {
+  await login(page);
+  await page.goto("/admin/book-club");
+  await page.locator('input[type="datetime-local"]').fill("2030-10-08T19:00");
+  await page.getByPlaceholder("Marisol V.").fill("Marisol V.");
+  await page
+    .getByPlaceholder("1412 SE C St, Bentonville")
+    .fill("1412 SE C St, Bentonville");
+  await page.getByRole("button", { name: "Save meetup" }).click();
+  await expect(page.locator(".success")).toContainText("Meetup saved");
+
+  await page.goto("/book-club");
+  await expect(page.getByText("Hosted by Marisol V.")).toBeVisible();
+  await expect(page.getByText("Nobody going yet")).toBeVisible();
+
+  await page.getByRole("button", { name: "RSVP — I'm going" }).click();
+  await expect(page.getByRole("button", { name: "Going ✓" })).toBeVisible();
+  await expect(page.getByText("1 person going")).toBeVisible();
+  await expect(page.getByText("Root Babe")).toBeVisible();
+});
+
+test("admin reorders and removes book club queue entries", async ({ page }) => {
+  await login(page);
+  await page.goto("/admin/book-club");
+
+  await page.getByRole("button", { name: "+ Add to queue" }).click();
+  await page.getByPlaceholder("Wide Sargasso Sea").fill("Beloved");
+  await page.getByPlaceholder("Jean Rhys").fill("Toni Morrison");
+  await page.getByRole("button", { name: "Add to queue" }).click();
+  await expect(page.locator(".success")).toContainText("Added to the queue");
+
+  await page.getByRole("button", { name: "+ Add to queue" }).click();
+  await page.getByPlaceholder("Wide Sargasso Sea").fill("Piranesi");
+  await page.getByPlaceholder("Jean Rhys").fill("Susanna Clarke");
+  await page.getByRole("button", { name: "Add to queue" }).click();
+  await expect(page.locator(".success")).toContainText("Added to the queue");
+
+  // Beloved was queued first; move Piranesi up one slot to swap them.
+  await page
+    .locator(".mn-row")
+    .filter({ hasText: "Piranesi" })
+    .getByRole("button", { name: "↑" })
+    .click();
+  const rows = page.locator(".mn-row").filter({ hasText: /Beloved|Piranesi/ });
+  await expect(rows.first()).toContainText("Piranesi");
+
+  // Remove Beloved from the queue entirely.
+  await page
+    .locator(".mn-row")
+    .filter({ hasText: "Beloved" })
+    .getByRole("button", { name: "×" })
+    .click();
+  await expect(page.locator(".mn-row").filter({ hasText: "Beloved" })).toHaveCount(0);
 });

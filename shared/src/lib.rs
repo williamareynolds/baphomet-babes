@@ -356,6 +356,157 @@ pub struct Rsvp {
     pub created_at: i64,
 }
 
+// Book Club
+//
+// One book at a time: an admin sets a current pick and an ordered queue of
+// what's next. Membership is ongoing (joining flips the Book Club
+// notification channel on, leaving flips it off) and deliberately separate
+// from meetup RSVP, which stays open to any member regardless of whether
+// they've joined the club — the same way Gatherings' RSVP needs no
+// membership of any kind.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct BookClubBook {
+    pub id: String,
+    pub title: String,
+    pub author: String,
+    #[serde(default)]
+    pub published: Option<String>,
+    /// "Why we picked it" — shown on the page while this is the current book.
+    #[serde(default)]
+    pub why: Option<String>,
+    #[serde(default)]
+    pub cover_url: Option<String>,
+    pub created_by: String,
+    pub created_at: i64,
+    #[serde(default)]
+    pub started_at: Option<i64>,
+    #[serde(default)]
+    pub finished_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateBookClubBookRequest {
+    pub title: String,
+    pub author: String,
+    #[serde(default)]
+    pub published: Option<String>,
+    #[serde(default)]
+    pub why: Option<String>,
+    #[serde(default)]
+    pub cover_url: Option<String>,
+}
+
+/// Edit the current book. `Some(_)` replaces, `None` keeps.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UpdateBookClubBookRequest {
+    pub title: Option<String>,
+    pub author: Option<String>,
+    pub published: Option<String>,
+    pub why: Option<String>,
+    pub cover_url: Option<String>,
+}
+
+/// The public state of the club: the current book (if any), whether the
+/// caller has joined, how many members have, and who else is reading along.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BookClubStatus {
+    pub current: Option<BookClubBook>,
+    pub joined: bool,
+    pub member_count: i64,
+    pub reading_along: Vec<String>,
+}
+
+/// The single upcoming meetup. Names of who's going are member-visible, like
+/// ride attendees — unlike gatherings, where only the count is public.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BookClubMeetup {
+    pub starts_at: String,
+    pub host: String,
+    #[serde(default)]
+    pub address: Option<String>,
+    #[serde(default)]
+    pub lat: Option<f64>,
+    #[serde(default)]
+    pub lng: Option<f64>,
+    pub rsvp_count: i64,
+    pub my_rsvp: bool,
+    pub going: Vec<String>,
+}
+
+/// Save the meetup wholesale — the admin form edits every field at once,
+/// unlike the partial `Update*Request` shapes elsewhere.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateBookClubMeetupRequest {
+    pub starts_at: String,
+    pub host: String,
+    #[serde(default)]
+    pub address: Option<String>,
+    #[serde(default)]
+    pub lat: Option<f64>,
+    #[serde(default)]
+    pub lng: Option<f64>,
+    /// Send both coordinates to move the pin, or neither to keep it. Dropping
+    /// the pin entirely needs `clear_pin` — `None` can't mean "clear".
+    #[serde(default)]
+    pub clear_pin: bool,
+}
+
+/// Which way to move a queued book by one slot.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum MoveDirection {
+    Up,
+    Down,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MoveQueueRequest {
+    pub direction: MoveDirection,
+}
+
+/// Validate a book's required fields — shared by the admin form and the API.
+pub fn validate_book_club_book(title: &str, author: &str) -> Result<(), String> {
+    if title.trim().is_empty() {
+        return Err("a title is required".into());
+    }
+    if author.trim().is_empty() {
+        return Err("an author is required".into());
+    }
+    Ok(())
+}
+
+/// Validate the meetup fields that don't need a database — same shape as
+/// `validate_gathering`'s time/place rules.
+pub fn validate_book_club_meetup(
+    starts_at: &str,
+    host: &str,
+    address: Option<&str>,
+    lat: Option<f64>,
+    lng: Option<f64>,
+) -> Result<(), String> {
+    if !valid_local_datetime(starts_at) {
+        return Err("meetup start must be YYYY-MM-DDTHH:MM".into());
+    }
+    if host.trim().is_empty() {
+        return Err("a host is required".into());
+    }
+    match (lat, lng) {
+        (Some(la), Some(ln)) => {
+            if !(-90.0..=90.0).contains(&la) || !(-180.0..=180.0).contains(&ln) {
+                return Err("that pin is off the map".into());
+            }
+        }
+        (None, None) => {}
+        _ => return Err("a pin needs both coordinates".into()),
+    }
+    let has_address = address.map(|a| !a.trim().is_empty()).unwrap_or(false);
+    let has_pin = lat.is_some() && lng.is_some();
+    if !has_address && !has_pin {
+        return Err("the meetup needs an address or a pin on the map".into());
+    }
+    Ok(())
+}
+
 // Mountain bike rides
 //
 // Any member can post that they're heading out to ride; others tap "join".
@@ -623,6 +774,7 @@ pub const CHANNEL_MOVIE_NIGHT: &str = "movie_night";
 pub const CHANNEL_CHAT: &str = "chat";
 pub const CHANNEL_MOUNTAIN_BIKE: &str = "mountain_bike";
 pub const CHANNEL_GATHERINGS: &str = "gatherings";
+pub const CHANNEL_BOOK_CLUB: &str = "book_club";
 /// Admin-only channel for exercising the push pipeline without bothering
 /// members: only admins/superadmins ever receive it, and it skips the inbox.
 pub const CHANNEL_TEST: &str = "test";
@@ -648,6 +800,10 @@ pub struct NotificationPrefs {
     pub chat: bool,
     #[serde(default)]
     pub mountain_bike: bool,
+    /// Opt-in: off until a member actually joins the club, at which point the
+    /// join handler flips this on explicitly (and leaving flips it back off).
+    #[serde(default)]
+    pub book_club: bool,
     /// Admin-only test channel. Defaults on — the backend restricts delivery
     /// to admins/superadmins regardless of what's stored here.
     #[serde(default = "default_true")]
@@ -677,6 +833,7 @@ impl Default for NotificationPrefs {
             movie_night: true,
             chat: false,
             mountain_bike: false,
+            book_club: false,
             test: true,
             gatherings: true,
             email: EmailPrefs::default(),
@@ -691,6 +848,8 @@ pub struct UpdateNotificationPrefs {
     pub movie_night: Option<bool>,
     pub chat: Option<bool>,
     pub mountain_bike: Option<bool>,
+    #[serde(default)]
+    pub book_club: Option<bool>,
     #[serde(default)]
     pub test: Option<bool>,
     #[serde(default)]
@@ -715,6 +874,8 @@ pub struct EmailPrefs {
     pub movie_night: bool,
     pub mountain_bike: bool,
     pub gatherings: bool,
+    #[serde(default)]
+    pub book_club: bool,
 }
 
 impl Default for EmailPrefs {
@@ -727,6 +888,9 @@ impl Default for EmailPrefs {
             // date, so a member who misses the push has missed the event.
             gatherings: true,
             mountain_bike: false,
+            // Off until joining the club explicitly turns it on, like the
+            // push flag above.
+            book_club: false,
         }
     }
 }
@@ -742,6 +906,7 @@ impl EmailPrefs {
             CHANNEL_MOVIE_NIGHT => self.movie_night,
             CHANNEL_MOUNTAIN_BIKE => self.mountain_bike,
             CHANNEL_GATHERINGS => self.gatherings,
+            CHANNEL_BOOK_CLUB => self.book_club,
             _ => false,
         }
     }
@@ -754,6 +919,8 @@ pub struct UpdateEmailPrefs {
     pub movie_night: Option<bool>,
     pub mountain_bike: Option<bool>,
     pub gatherings: Option<bool>,
+    #[serde(default)]
+    pub book_club: Option<bool>,
 }
 
 /// Register (or refresh) an FCM device token for the current user.
@@ -1066,9 +1233,10 @@ mod tests {
 
     #[test]
     fn email_allows_maps_channels_to_flags() {
-        let p = EmailPrefs { announcements: true, general: false, movie_night: true, mountain_bike: false, gatherings: true };
+        let p = EmailPrefs { announcements: true, general: false, movie_night: true, mountain_bike: false, gatherings: true, book_club: true };
         assert!(p.allows(CHANNEL_ANNOUNCEMENTS));
         assert!(p.allows(CHANNEL_MOVIE_NIGHT));
+        assert!(p.allows(CHANNEL_BOOK_CLUB));
         assert!(!p.allows(CHANNEL_GENERAL));
         assert!(!p.allows(CHANNEL_MOUNTAIN_BIKE));
     }
@@ -1077,7 +1245,7 @@ mod tests {
     fn email_never_allows_chat_or_unknown_channels() {
         // Chat delivers via push_only and must never reach the email fan-out;
         // a channel added later has to opt in explicitly rather than inherit.
-        let p = EmailPrefs { announcements: true, general: true, movie_night: true, mountain_bike: true, gatherings: true };
+        let p = EmailPrefs { announcements: true, general: true, movie_night: true, mountain_bike: true, gatherings: true, book_club: true };
         assert!(!p.allows(CHANNEL_CHAT));
         assert!(!p.allows(CHANNEL_TEST));
         assert!(!p.allows("something_new"));

@@ -53,13 +53,12 @@ pub fn Nav(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
             </button>
             <div class="nav-links" class:open=open on:click=close>
                 <Show when=move || auth.get().is_some()>
-                    <A href="/about">"About"</A>
                     <A href="/movie-nights">"Movie Nights"</A>
+                    <A href="/book-club">"Book Club"</A>
                     <A href="/rides">"Rides"</A>
                     <A href="/gatherings">"Gatherings"</A>
                     <A href="/chat">"Chat"</A>
                     <A href="/members">"Members"</A>
-                    <A href="/notifications">"Notifications"</A>
                     <A href="/profile">"My Profile"</A>
                     // Drop the install link once we're running as the installed app.
                     <Show when=move || !crate::pwa::is_standalone()>

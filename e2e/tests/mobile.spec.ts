@@ -105,9 +105,9 @@ test("home page fits the iPhone viewport", async ({ page }) => {
   await expectNoOverflow(page);
 });
 
-test("about page fits the iPhone viewport", async ({ page }) => {
+test("book club page fits the iPhone viewport", async ({ page }) => {
   await login(page);
-  await page.goto("/about");
+  await page.goto("/book-club");
   await expectNoOverflow(page);
 });
 

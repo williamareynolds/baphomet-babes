@@ -56,6 +56,7 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let ch_mtb = RwSignal::new(false); // mountain bike is opt-in
     let ch_test = RwSignal::new(true); // admin-only test channel
     let ch_gather = RwSignal::new(true); // gatherings: fixed dates, so on by default
+    let ch_book_club = RwSignal::new(false); // opt-in: joining the club flips this on
     // Email delivery, per channel. Movie night defaults on (it's the one that
     // needs votes); the rest are opt-in so the club's mail stays rare.
     let em_announce = RwSignal::new(false);
@@ -63,6 +64,7 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let em_movie = RwSignal::new(true);
     let em_mtb = RwSignal::new(false);
     let em_gather = RwSignal::new(true);
+    let em_book_club = RwSignal::new(false);
     let notif_msg = RwSignal::new(String::new());
     let is_admin = move || auth.get().map(|u| u.is_admin()).unwrap_or(false);
 
@@ -78,11 +80,13 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                     ch_mtb.set(p.mountain_bike);
                     ch_test.set(p.test);
                     ch_gather.set(p.gatherings);
+                    ch_book_club.set(p.book_club);
                     em_announce.set(p.email.announcements);
                     em_general.set(p.email.general);
                     em_movie.set(p.email.movie_night);
                     em_mtb.set(p.email.mountain_bike);
                     em_gather.set(p.email.gatherings);
+                    em_book_club.set(p.email.book_club);
                 }
             });
         }
@@ -136,12 +140,14 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
             mountain_bike: Some(ch_mtb.get()),
             test: Some(ch_test.get()),
             gatherings: Some(ch_gather.get()),
+            book_club: Some(ch_book_club.get()),
             email: Some(shared::UpdateEmailPrefs {
                 announcements: Some(em_announce.get()),
                 general: Some(em_general.get()),
                 movie_night: Some(em_movie.get()),
                 mountain_bike: Some(em_mtb.get()),
                 gatherings: Some(em_gather.get()),
+                book_club: Some(em_book_club.get()),
             }),
         };
         wasm_bindgen_futures::spawn_local(async move {
@@ -308,6 +314,7 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                         <Switch checked=ch_general label="General" />
                         <Switch checked=ch_movie label="Movie Nights" />
                         <Switch checked=ch_gather label="Gatherings" />
+                        <Switch checked=ch_book_club label="Book Club" />
                         <Switch checked=ch_chat label="Group Chat" />
                         <Switch checked=ch_mtb label="Mountain Bike Rides" />
                         <Show when=is_admin>
@@ -324,6 +331,7 @@ pub fn ProfilePage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                     <div class="email-channels" style="display:flex;flex-direction:column;gap:0.6rem;">
                         <Switch checked=em_movie label="Movie Nights & voting" />
                         <Switch checked=em_gather label="Gatherings" />
+                        <Switch checked=em_book_club label="Book Club" />
                         <Switch checked=em_announce label="Announcements" />
                         <Switch checked=em_general label="General" />
                         <Switch checked=em_mtb label="Mountain Bike Rides" />

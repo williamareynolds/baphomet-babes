@@ -69,6 +69,7 @@ fn channel_default(channel: &str) -> bool {
         shared::CHANNEL_MOUNTAIN_BIKE => d.mountain_bike,
         shared::CHANNEL_TEST => d.test,
         shared::CHANNEL_GATHERINGS => d.gatherings,
+        shared::CHANNEL_BOOK_CLUB => d.book_club,
         _ => false,
     }
 }
@@ -82,6 +83,7 @@ fn prefs_for(channel: &str, p: &NotifPrefsDoc) -> bool {
         shared::CHANNEL_MOUNTAIN_BIKE => p.mountain_bike,
         shared::CHANNEL_TEST => p.test,
         shared::CHANNEL_GATHERINGS => p.gatherings,
+        shared::CHANNEL_BOOK_CLUB => p.book_club,
         _ => false,
     }
 }
@@ -186,7 +188,7 @@ async fn unregister_token(
 
 // ---- preferences ----
 
-async fn load_prefs(state: &AppState, user_id: &str) -> anyhow::Result<NotifPrefsDoc> {
+pub(crate) async fn load_prefs(state: &AppState, user_id: &str) -> anyhow::Result<NotifPrefsDoc> {
     let existing: Option<NotifPrefsDoc> = state.db
         .fluent()
         .select()
@@ -202,6 +204,7 @@ async fn load_prefs(state: &AppState, user_id: &str) -> anyhow::Result<NotifPref
         movie_night: true,
         chat: false,
         mountain_bike: false,
+        book_club: false,
         test: true,
         gatherings: true,
         cleared_at: 0,
@@ -210,7 +213,27 @@ async fn load_prefs(state: &AppState, user_id: &str) -> anyhow::Result<NotifPref
         email_movie_night: true,
         email_mountain_bike: false,
         email_gatherings: true,
+        email_book_club: false,
     }))
+}
+
+/// Set the Book Club push and email flags for `user_id`, creating a prefs doc
+/// with defaults if none exists yet. Used by the Book Club join/leave
+/// handlers to implement "joining turns notifications on, leaving turns them
+/// off" from the design.
+pub(crate) async fn set_book_club_prefs(state: &AppState, user_id: &str, on: bool) -> anyhow::Result<()> {
+    let existing = load_prefs(state, user_id).await?;
+    let updated = NotifPrefsDoc { book_club: on, email_book_club: on, ..existing };
+    let _: NotifPrefsDoc = state.db
+        .fluent()
+        .update()
+        .in_col(NOTIF_PREFS)
+        .document_id(user_id)
+        .object(&updated)
+        .execute()
+        .await
+        .context("failed to update book club notif prefs")?;
+    Ok(())
 }
 
 /// The stored flags as the API's nested shape.
@@ -221,6 +244,7 @@ fn email_prefs(p: &NotifPrefsDoc) -> shared::EmailPrefs {
         movie_night: p.email_movie_night,
         mountain_bike: p.email_mountain_bike,
         gatherings: p.email_gatherings,
+        book_club: p.email_book_club,
     }
 }
 
@@ -236,6 +260,7 @@ async fn get_prefs(
         movie_night: p.movie_night,
         chat: p.chat,
         mountain_bike: p.mountain_bike,
+        book_club: p.book_club,
         test: p.test,
         gatherings: p.gatherings,
         email: email_prefs(&p),
@@ -260,6 +285,7 @@ async fn update_prefs(
         movie_night: req.movie_night.unwrap_or(existing.movie_night),
         chat: req.chat.unwrap_or(existing.chat),
         mountain_bike: req.mountain_bike.unwrap_or(existing.mountain_bike),
+        book_club: req.book_club.unwrap_or(existing.book_club),
         test: req.test.unwrap_or(existing.test),
         gatherings: req.gatherings.unwrap_or(existing.gatherings),
         cleared_at: existing.cleared_at,
@@ -268,6 +294,7 @@ async fn update_prefs(
         email_movie_night: e.movie_night.unwrap_or(existing.email_movie_night),
         email_mountain_bike: e.mountain_bike.unwrap_or(existing.email_mountain_bike),
         email_gatherings: e.gatherings.unwrap_or(existing.email_gatherings),
+        email_book_club: e.book_club.unwrap_or(existing.email_book_club),
     };
 
     let _: NotifPrefsDoc = state.db
@@ -286,6 +313,7 @@ async fn update_prefs(
         movie_night: updated.movie_night,
         chat: updated.chat,
         mountain_bike: updated.mountain_bike,
+        book_club: updated.book_club,
         test: updated.test,
         gatherings: updated.gatherings,
         email: email_prefs(&updated),
@@ -502,6 +530,7 @@ pub(crate) async fn email_fanout(
                 movie_night: p.email_movie_night,
                 mountain_bike: p.email_mountain_bike,
                 gatherings: p.email_gatherings,
+                book_club: p.email_book_club,
             })
             .unwrap_or_default();
         if !wanted.allows(channel) {

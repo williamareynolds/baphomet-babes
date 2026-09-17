@@ -2409,3 +2409,206 @@ async fn cover_upload_says_so_when_storage_is_unconfigured() {
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(body["error"].as_str().unwrap().contains("aren't configured"), "got: {body}");
 }
+
+// ---- Book Club ----
+
+async fn add_to_queue(app: &Router, admin: &str, title: &str, author: &str) -> String {
+    let (status, b) = send(app, req("POST", "/book-club/queue", Some(admin), Some(json!({
+        "title": title, "author": author
+    })))).await;
+    assert_eq!(status, StatusCode::OK, "queue add failed: {b}");
+    b["id"].as_str().unwrap().to_string()
+}
+
+#[tokio::test]
+async fn book_club_queue_admin_gating_and_ordering() {
+    if !emulator_available() { return; }
+    let app = test_app("bookclub-queue").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, _) = invite_and_register(&app, &root, "bc1@test.com", "bc1", "member").await;
+
+    // The queue is admin-only — members never see what's coming.
+    let (status, _) = send(&app, req("GET", "/book-club/queue", Some(&member), None)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = send(&app, req("POST", "/book-club/queue", Some(&member), Some(json!({
+        "title": "Sneaky", "author": "Nobody"
+    })))).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    let first = add_to_queue(&app, &root, "Beloved", "Toni Morrison").await;
+    let second = add_to_queue(&app, &root, "Piranesi", "Susanna Clarke").await;
+
+    let (status, queue) = send(&app, req("GET", "/book-club/queue", Some(&root), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(queue.as_array().unwrap().len(), 2);
+    assert_eq!(queue[0]["title"], "Beloved", "queued in add order");
+    assert_eq!(queue[1]["title"], "Piranesi");
+
+    // Move the second book up a slot; the order flips.
+    let (status, queue) = send(&app, req("POST", &format!("/book-club/queue/{second}/move"), Some(&root), Some(json!({
+        "direction": "up"
+    })))).await;
+    assert_eq!(status, StatusCode::OK, "move failed: {queue}");
+    assert_eq!(queue[0]["title"], "Piranesi");
+    assert_eq!(queue[1]["title"], "Beloved");
+
+    // A no-op move (already at the front) leaves the order alone.
+    let (status, queue) = send(&app, req("POST", &format!("/book-club/queue/{second}/move"), Some(&root), Some(json!({
+        "direction": "up"
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(queue[0]["title"], "Piranesi");
+
+    let (status, _) = send(&app, req("DELETE", &format!("/book-club/queue/{first}"), Some(&root), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, queue) = send(&app, req("GET", "/book-club/queue", Some(&root), None)).await;
+    assert_eq!(queue.as_array().unwrap().len(), 1);
+    assert_eq!(queue[0]["title"], "Piranesi");
+}
+
+#[tokio::test]
+async fn book_club_finish_promotes_and_archives() {
+    if !emulator_available() { return; }
+    let app = test_app("bookclub-finish").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, _) = invite_and_register(&app, &root, "bc2@test.com", "bc2", "member").await;
+
+    // Nothing current, nothing queued: finishing is a harmless no-op.
+    let (status, status_body) = send(&app, req("POST", "/book-club/finish", Some(&root), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(status_body["current"].is_null());
+
+    add_to_queue(&app, &root, "The Bloody Chamber", "Angela Carter").await;
+
+    // With no current book, finishing just promotes the front of the queue —
+    // that's how the very first book starts.
+    let (status, s) = send(&app, req("POST", "/book-club/finish", Some(&root), None)).await;
+    assert_eq!(status, StatusCode::OK, "finish failed: {s}");
+    assert_eq!(s["current"]["title"], "The Bloody Chamber");
+
+    let (_, current) = send(&app, req("GET", "/book-club/current", Some(&member), None)).await;
+    assert_eq!(current["current"]["title"], "The Bloody Chamber");
+
+    add_to_queue(&app, &root, "The Vegetarian", "Han Kang").await;
+
+    // Finishing again archives the old current book and promotes the next.
+    let (status, s) = send(&app, req("POST", "/book-club/finish", Some(&root), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(s["current"]["title"], "The Vegetarian");
+
+    let (_, archive) = send(&app, req("GET", "/book-club/archive", Some(&member), None)).await;
+    assert_eq!(archive.as_array().unwrap().len(), 1);
+    assert_eq!(archive[0]["title"], "The Bloody Chamber");
+
+    // The queue is now empty; finishing again archives the current book and
+    // leaves the club between books.
+    let (status, s) = send(&app, req("POST", "/book-club/finish", Some(&root), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(s["current"].is_null());
+    let (_, archive) = send(&app, req("GET", "/book-club/archive", Some(&member), None)).await;
+    assert_eq!(archive.as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn book_club_join_leave_toggles_notification_prefs() {
+    if !emulator_available() { return; }
+    let app = test_app("bookclub-membership").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, _) = invite_and_register(&app, &root, "bc3@test.com", "bc3", "member").await;
+
+    // Off by default, like chat and mountain bike — joining is what turns it on.
+    let (_, prefs) = send(&app, req("GET", "/notifications/prefs", Some(&member), None)).await;
+    assert_eq!(prefs["book_club"], false);
+    assert_eq!(prefs["email"]["book_club"], false);
+
+    let (status, s) = send(&app, req("POST", "/book-club/join", Some(&member), None)).await;
+    assert_eq!(status, StatusCode::OK, "join failed: {s}");
+    assert_eq!(s["joined"], true);
+    assert_eq!(s["member_count"], 1);
+
+    let (_, prefs) = send(&app, req("GET", "/notifications/prefs", Some(&member), None)).await;
+    assert_eq!(prefs["book_club"], true, "joining turns push on");
+    assert_eq!(prefs["email"]["book_club"], true, "joining turns email on too");
+
+    // Joining is idempotent — re-joining doesn't double the member count.
+    let (_, s) = send(&app, req("POST", "/book-club/join", Some(&member), None)).await;
+    assert_eq!(s["member_count"], 1);
+
+    let (status, s) = send(&app, req("POST", "/book-club/leave", Some(&member), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(s["joined"], false);
+    assert_eq!(s["member_count"], 0);
+
+    let (_, prefs) = send(&app, req("GET", "/notifications/prefs", Some(&member), None)).await;
+    assert_eq!(prefs["book_club"], false, "leaving turns push back off");
+    assert_eq!(prefs["email"]["book_club"], false, "leaving turns email back off");
+}
+
+#[tokio::test]
+async fn book_club_meetup_rsvp_is_visible_and_open_to_non_members() {
+    if !emulator_available() { return; }
+    let app = test_app("bookclub-meetup").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, _) = invite_and_register(&app, &root, "bc4@test.com", "bc4", "member").await;
+
+    // No meetup yet.
+    let (status, m) = send(&app, req("GET", "/book-club/meetup", Some(&member), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(m.is_null());
+
+    // Only admins can set it.
+    let (status, _) = send(&app, req("PUT", "/book-club/meetup", Some(&member), Some(json!({
+        "starts_at": "2030-10-08T19:00", "host": "Sneaky", "address": "Nowhere"
+    })))).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    let (status, m) = send(&app, req("PUT", "/book-club/meetup", Some(&root), Some(json!({
+        "starts_at": "2030-10-08T19:00", "host": "Marisol V.", "address": "1412 SE C St"
+    })))).await;
+    assert_eq!(status, StatusCode::OK, "meetup save failed: {m}");
+    assert_eq!(m["host"], "Marisol V.");
+    assert_eq!(m["rsvp_count"], 0);
+
+    // RSVP works whether or not the member has joined the club.
+    let (status, m) = send(&app, req("POST", "/book-club/meetup/rsvp", Some(&member), Some(json!({
+        "going": true
+    })))).await;
+    assert_eq!(status, StatusCode::OK, "rsvp failed: {m}");
+    assert_eq!(m["rsvp_count"], 1);
+    assert_eq!(m["my_rsvp"], true);
+    // Unlike gatherings, names ARE visible — everyone can see who's going.
+    assert_eq!(m["going"][0], "bc4");
+
+    let (_, m) = send(&app, req("GET", "/book-club/meetup", Some(&root), None)).await;
+    assert_eq!(m["rsvp_count"], 1);
+    assert_eq!(m["going"][0], "bc4");
+
+    let (_, m) = send(&app, req("POST", "/book-club/meetup/rsvp", Some(&member), Some(json!({
+        "going": false
+    })))).await;
+    assert_eq!(m["rsvp_count"], 0);
+}
+
+#[tokio::test]
+async fn book_club_finish_emails_joined_members() {
+    if !emulator_available() { return; }
+    let (app, mail) = test_app_with_email("bookclub-email").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, _) = invite_and_register(&app, &root, "bc5@test.com", "bc5", "member").await;
+    let (unjoined, _) = invite_and_register(&app, &root, "bc6@test.com", "bc6", "member").await;
+    let _ = unjoined;
+
+    // Book Club email is opt-in — only a member who has actually joined
+    // should hear about a new pick.
+    let (status, _) = send(&app, req("POST", "/book-club/join", Some(&member), None)).await;
+    assert_eq!(status, StatusCode::OK);
+
+    add_to_queue(&app, &root, "The Bloody Chamber", "Angela Carter").await;
+    let (status, s) = send(&app, req("POST", "/book-club/finish", Some(&root), None)).await;
+    assert_eq!(status, StatusCode::OK, "finish failed: {s}");
+
+    mail.wait_for(1).await;
+    let recipients = mail.recipients();
+    assert_eq!(recipients, vec!["bc5@test.com"], "only the joined member is emailed");
+    assert_eq!(mail.requests()[0]["subject"], "New book: The Bloody Chamber");
+}

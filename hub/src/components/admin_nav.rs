@@ -16,6 +16,7 @@ pub fn AdminNav(active: &'static str, #[prop(default = false)] is_superadmin: bo
             <A href="/admin/announcements" attr:class=cls("announcements")>"Announcements"</A>
             <A href="/admin/broadcast" attr:class=cls("broadcast")>"Broadcast"</A>
             <A href="/admin/events" attr:class=cls("events")>"Events"</A>
+            <A href="/admin/book-club" attr:class=cls("book-club")>"Book Club"</A>
             <A href="/admin/invites" attr:class=cls("invites")>"Invites"</A>
             <Show when=move || is_superadmin>
                 <A href="/admin/users" attr:class=cls("users")>"Users"</A>
