@@ -8,7 +8,7 @@
 
 use crate::{
     AppState,
-    auth::{require_admin, require_auth},
+    auth::{require_auth, require_permission},
     error::{AppError, AppResult},
     models::{BookClubBookDoc, BookClubMeetupDoc, BookClubMeetupRsvpDoc, BookClubMemberDoc, ProfileDoc},
 };
@@ -308,7 +308,7 @@ async fn rsvp_meetup(
 // ---- admin: queue ----
 
 async fn get_queue(State(state): State<AppState>, headers: HeaderMap) -> AppResult<Json<Vec<shared::BookClubBook>>> {
-    require_admin(&state, &headers).await?;
+    require_permission(&state, &headers, shared::PERMISSION_BOOK_CLUB_MANAGER).await?;
     let docs = load_queue(&state).await?;
     Ok(Json(docs.into_iter().map(doc_to_book).collect()))
 }
@@ -318,7 +318,7 @@ async fn add_to_queue(
     headers: HeaderMap,
     Json(req): Json<CreateBookClubBookRequest>,
 ) -> AppResult<Json<shared::BookClubBook>> {
-    let claims = require_admin(&state, &headers).await?;
+    let claims = require_permission(&state, &headers, shared::PERMISSION_BOOK_CLUB_MANAGER).await?;
 
     let title = req.title.trim().chars().take(MAX_SHORT).collect::<String>();
     let author = req.author.trim().chars().take(MAX_SHORT).collect::<String>();
@@ -361,7 +361,7 @@ async fn move_in_queue(
     Path(id): Path<String>,
     Json(req): Json<MoveQueueRequest>,
 ) -> AppResult<Json<Vec<shared::BookClubBook>>> {
-    require_admin(&state, &headers).await?;
+    require_permission(&state, &headers, shared::PERMISSION_BOOK_CLUB_MANAGER).await?;
     let mut queue = load_queue(&state).await?;
     let idx = queue.iter().position(|b| b.id == id).ok_or(AppError::NotFound)?;
     let swap_idx = match req.direction {
@@ -405,7 +405,7 @@ async fn remove_from_queue(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> AppResult<()> {
-    require_admin(&state, &headers).await?;
+    require_permission(&state, &headers, shared::PERMISSION_BOOK_CLUB_MANAGER).await?;
     let queue = load_queue(&state).await?;
     if !queue.iter().any(|b| b.id == id) {
         return Err(AppError::NotFound);
@@ -428,7 +428,7 @@ async fn update_current(
     headers: HeaderMap,
     Json(req): Json<UpdateBookClubBookRequest>,
 ) -> AppResult<Json<shared::BookClubBook>> {
-    require_admin(&state, &headers).await?;
+    require_permission(&state, &headers, shared::PERMISSION_BOOK_CLUB_MANAGER).await?;
     let existing = load_current(&state).await?.ok_or(AppError::NotFound)?;
 
     let title = req.title
@@ -472,7 +472,7 @@ async fn update_current(
 /// With no current book, this just promotes — the way the very first book
 /// starts. With an empty queue, the club goes "between books".
 async fn finish(State(state): State<AppState>, headers: HeaderMap) -> AppResult<Json<shared::BookClubStatus>> {
-    let claims = require_admin(&state, &headers).await?;
+    let claims = require_permission(&state, &headers, shared::PERMISSION_BOOK_CLUB_MANAGER).await?;
 
     if let Some(current) = load_current(&state).await? {
         let archived = BookClubBookDoc {
@@ -535,7 +535,7 @@ async fn update_meetup(
     headers: HeaderMap,
     Json(req): Json<UpdateBookClubMeetupRequest>,
 ) -> AppResult<Json<shared::BookClubMeetup>> {
-    let claims = require_admin(&state, &headers).await?;
+    let claims = require_permission(&state, &headers, shared::PERMISSION_BOOK_CLUB_MANAGER).await?;
     let existing = load_meetup(&state).await?;
 
     let address = trimmed(req.address.clone(), MAX_ADDRESS);
@@ -583,7 +583,7 @@ async fn upload_cover(
     headers: HeaderMap,
     Json(req): Json<UploadImageRequest>,
 ) -> AppResult<Json<UploadImageResponse>> {
-    require_admin(&state, &headers).await?;
+    require_permission(&state, &headers, shared::PERMISSION_BOOK_CLUB_MANAGER).await?;
 
     let Some(ext) = crate::storage::extension_for(req.content_type.trim()) else {
         return Err(AppError::BadRequest(
@@ -625,7 +625,7 @@ async fn geocode(
     headers: HeaderMap,
     Json(req): Json<GeocodeRequest>,
 ) -> AppResult<Json<GeocodeResponse>> {
-    require_admin(&state, &headers).await?;
+    require_permission(&state, &headers, shared::PERMISSION_BOOK_CLUB_MANAGER).await?;
 
     Ok(Json(match crate::geocode::lookup(&req.query).await {
         Some(l) => GeocodeResponse {

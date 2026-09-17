@@ -11,6 +11,7 @@ use shared::{
     GeocodeRequest, GeocodeResponse, UpdateGatheringRequest, UploadImageRequest,
     UploadImageResponse,
 };
+use shared::{MemberPermissions, UpdateMemberPermissionRequest};
 use shared::{
     BookClubBook, BookClubMeetup, BookClubStatus, CreateBookClubBookRequest, MoveDirection,
     MoveQueueRequest, UpdateBookClubBookRequest, UpdateBookClubMeetupRequest,
@@ -418,6 +419,20 @@ pub async fn fetch_users(token: &str) -> Result<Vec<UserSummary>, String> {
 
 pub async fn update_user(id: &str, req: UpdateUserRequest, token: &str) -> Result<UserSummary, String> {
     put_json(&format!("/users/{id}"), &req, token).await
+}
+
+// ---- Scoped permissions ("Roles" page) ----
+
+pub async fn fetch_roles(token: &str) -> Result<Vec<MemberPermissions>, String> {
+    get("/roles", token).await
+}
+
+pub async fn update_role_permission(
+    user_id: &str,
+    req: UpdateMemberPermissionRequest,
+    token: &str,
+) -> Result<MemberPermissions, String> {
+    put_json(&format!("/roles/{user_id}"), &req, token).await
 }
 
 // ---- Gatherings ----

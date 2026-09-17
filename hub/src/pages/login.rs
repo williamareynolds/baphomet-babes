@@ -38,6 +38,7 @@ pub fn LoginPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                 username: resp.user.username,
                 role: resp.user.role,
                 token: resp.token,
+                permissions: resp.user.permissions,
             };
             save_auth(&user);
             auth.set(Some(user));

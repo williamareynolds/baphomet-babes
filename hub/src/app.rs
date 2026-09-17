@@ -8,6 +8,7 @@ use crate::{
         admin_calendar_links::AdminCalendarLinksPage,
         admin_events::AdminEventsPage,
         admin_invites::AdminInvitesPage,
+        admin_roles::AdminRolesPage,
         admin_users::AdminUsersPage,
         announcements::AnnouncementsPage,
         book_club::BookClubPage,
@@ -97,6 +98,7 @@ pub fn App() -> impl IntoView {
                     <Route path=path!("/admin/events") view=move || view! { <AdminEventsPage auth=auth /> } />
                     <Route path=path!("/admin/book-club") view=move || view! { <AdminBookClubPage auth=auth /> } />
                     <Route path=path!("/admin/invites") view=move || view! { <AdminInvitesPage auth=auth /> } />
+                    <Route path=path!("/admin/roles") view=move || view! { <AdminRolesPage auth=auth /> } />
                     <Route path=path!("/admin/users") view=move || view! { <AdminUsersPage auth=auth /> } />
                     <Route path=path!("/admin/calendar-links") view=move || view! { <AdminCalendarLinksPage auth=auth /> } />
                 </Routes>

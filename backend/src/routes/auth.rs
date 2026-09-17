@@ -48,7 +48,13 @@ async fn login(
     let token = create_token(&user.id, &user.role, &state.jwt_secret)?;
     Ok(Json(AuthResponse {
         token,
-        user: UserInfo { id: user.id, email: user.email, username: user.username, role: user.role },
+        user: UserInfo {
+            id: user.id,
+            email: user.email,
+            username: user.username,
+            role: user.role,
+            permissions: user.permissions,
+        },
     }))
 }
 
@@ -133,6 +139,7 @@ async fn register(
             password_hash: hash,
             role: role.clone(),
             disabled: false,
+            permissions: Vec::new(),
             created_at: now,
         })
         .execute()
@@ -161,6 +168,6 @@ async fn register(
     let token = create_token(&id, &role, &state.jwt_secret)?;
     Ok(Json(AuthResponse {
         token,
-        user: UserInfo { id, email: req.email, username: req.username, role },
+        user: UserInfo { id, email: req.email, username: req.username, role, permissions: Vec::new() },
     }))
 }

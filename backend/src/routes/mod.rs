@@ -10,4 +10,5 @@ pub mod invites;
 pub mod notifications;
 pub mod profile;
 pub mod rides;
+pub mod roles;
 pub mod users;

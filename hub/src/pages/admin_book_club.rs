@@ -18,7 +18,13 @@ const MAP_ID: &str = "bb-book-club-map";
 
 #[component]
 pub fn AdminBookClubPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
+    let is_admin = move || auth.get().map(|u| u.is_admin()).unwrap_or(false);
     let is_superadmin = move || auth.get().map(|u| u.is_superadmin()).unwrap_or(false);
+    let can_manage = move || {
+        auth.get()
+            .map(|u| u.has_permission(shared::PERMISSION_BOOK_CLUB_MANAGER))
+            .unwrap_or(false)
+    };
     let (refresh, set_refresh) = signal(0u32);
 
     let current: RwSignal<Option<Result<Option<BookClubBook>, String>>> = RwSignal::new(None);
@@ -309,7 +315,13 @@ pub fn AdminBookClubPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
 
     view! {
         <main class="page">
-            <AdminNav active="book-club" is_superadmin=is_superadmin() />
+        <Show when=can_manage fallback=|| view! { <p class="error">"Access denied."</p> }>
+            <AdminNav
+                active="book-club"
+                is_admin=is_admin()
+                is_superadmin=is_superadmin()
+                can_manage_book_club=can_manage()
+            />
             <h1 class="page-title">"Book Club"</h1>
 
             <Show when=move || !note.get().is_empty()>
@@ -472,6 +484,7 @@ pub fn AdminBookClubPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                     </div>
                 </form>
             </Card>
+        </Show>
         </main>
     }
 }

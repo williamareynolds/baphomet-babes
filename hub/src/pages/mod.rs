@@ -4,6 +4,7 @@ pub mod admin_broadcast;
 pub mod admin_calendar_links;
 pub mod admin_events;
 pub mod admin_invites;
+pub mod admin_roles;
 pub mod admin_users;
 pub mod announcements;
 pub mod book_club;

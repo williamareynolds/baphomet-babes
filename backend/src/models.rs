@@ -14,6 +14,9 @@ pub struct UserDoc {
     pub role: String,
     #[serde(default)]
     pub disabled: bool,
+    /// Scoped grants beyond role — see `shared::KNOWN_PERMISSIONS`.
+    #[serde(default)]
+    pub permissions: Vec<String>,
     pub created_at: i64,
 }
 

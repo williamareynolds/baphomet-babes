@@ -46,7 +46,7 @@ pub fn AdminUsersPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                 fallback=|| view! { <p class="error">"Access denied."</p> }
             >
                 <h1>"Admin"</h1>
-                <AdminNav active="users" is_superadmin=true />
+                <AdminNav active="users" is_admin=true is_superadmin=true />
 
                 <Show when=move || !error.get().is_empty()>
                     <p class="error">{move || error.get()}</p>

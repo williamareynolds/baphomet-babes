@@ -13,6 +13,11 @@ pub struct Claims {
     pub sub: String, // user id
     pub role: String,
     pub exp: usize,
+    /// Scoped permission grants. Never read out of the token itself — like
+    /// `role`, `require_auth` always overwrites this from the live account,
+    /// so the JWT's copy is just an unused placeholder.
+    #[serde(default)]
+    pub permissions: Vec<String>,
 }
 
 pub fn create_token(user_id: &str, role: &str, secret: &str) -> AppResult<String> {
@@ -26,6 +31,7 @@ pub fn create_token(user_id: &str, role: &str, secret: &str) -> AppResult<String
         sub: user_id.to_string(),
         role: role.to_string(),
         exp,
+        permissions: Vec::new(),
     };
     encode(
         &Header::default(),
@@ -89,7 +95,7 @@ pub async fn require_auth(state: &AppState, headers: &HeaderMap) -> AppResult<Cl
         return Err(AppError::Auth("account disabled".into()));
     }
 
-    Ok(Claims { sub: user.id, role: user.role, exp: claims.exp })
+    Ok(Claims { sub: user.id, role: user.role, exp: claims.exp, permissions: user.permissions })
 }
 
 pub async fn require_admin(state: &AppState, headers: &HeaderMap) -> AppResult<Claims> {
@@ -98,6 +104,19 @@ pub async fn require_admin(state: &AppState, headers: &HeaderMap) -> AppResult<C
         return Err(AppError::Forbidden);
     }
     Ok(claims)
+}
+
+/// Full admins/superadmins always pass (a permission is strictly additive on
+/// top of the role tier); anyone else needs `perm` explicitly granted. Used
+/// for scoped admin areas — e.g. a Book Club Manager who should reach
+/// `/admin/book-club` without the rest of the admin suite.
+pub async fn require_permission(state: &AppState, headers: &HeaderMap, perm: &str) -> AppResult<Claims> {
+    let claims = require_auth(state, headers).await?;
+    if claims.role == "admin" || claims.role == "superadmin" || claims.permissions.iter().any(|p| p == perm) {
+        Ok(claims)
+    } else {
+        Err(AppError::Forbidden)
+    }
 }
 
 pub async fn require_superadmin(state: &AppState, headers: &HeaderMap) -> AppResult<Claims> {
@@ -153,7 +172,7 @@ mod tests {
             .unwrap()
             .as_secs() as usize
             - 120; // past the default 60s leeway
-        let claims = Claims { sub: "user-123".into(), role: "member".into(), exp };
+        let claims = Claims { sub: "user-123".into(), role: "member".into(), exp, permissions: Vec::new() };
         let token = encode(
             &Header::default(),
             &claims,

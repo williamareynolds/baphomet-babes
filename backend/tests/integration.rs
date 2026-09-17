@@ -2612,3 +2612,84 @@ async fn book_club_finish_emails_joined_members() {
     assert_eq!(recipients, vec!["bc5@test.com"], "only the joined member is emailed");
     assert_eq!(mail.requests()[0]["subject"], "New book: The Bloody Chamber");
 }
+
+// ---- Scoped permissions ("Roles") ----
+
+#[tokio::test]
+async fn book_club_manager_permission_scopes_access() {
+    if !emulator_available() { return; }
+    let app = test_app("roles-scope").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, member_id) = invite_and_register(&app, &root, "role1@test.com", "role1", "member").await;
+
+    // Plain member: shut out of both the Book Club admin surface and the
+    // ordinary admin-only surface.
+    let (status, _) = send(&app, req("GET", "/book-club/queue", Some(&member), None)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = send(&app, req("POST", "/invites", Some(&member), Some(json!({ "role": "member" })))).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    // Can't grant it to themselves, either.
+    let (status, _) = send(&app, req("PUT", &format!("/roles/{member_id}"), Some(&member), Some(json!({
+        "permission": "book_club_manager", "granted": true
+    })))).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Root grants the scoped permission.
+    let (status, mp) = send(&app, req("PUT", &format!("/roles/{member_id}"), Some(&root), Some(json!({
+        "permission": "book_club_manager", "granted": true
+    })))).await;
+    assert_eq!(status, StatusCode::OK, "grant failed: {mp}");
+    assert_eq!(mp["permissions"], json!(["book_club_manager"]));
+
+    // Now the member can run the Book Club admin panel…
+    let (status, b) = send(&app, req("POST", "/book-club/queue", Some(&member), Some(json!({
+        "title": "Piranesi", "author": "Susanna Clarke"
+    })))).await;
+    assert_eq!(status, StatusCode::OK, "queue add failed: {b}");
+    let (status, _) = send(&app, req("GET", "/book-club/queue", Some(&member), None)).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // …but nothing else admin-only, and they still can't self-grant.
+    let (status, _) = send(&app, req("POST", "/invites", Some(&member), Some(json!({ "role": "member" })))).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+    let (status, _) = send(&app, req("GET", "/roles", Some(&member), None)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    // Revoke: access to the Book Club panel disappears again.
+    let (status, mp) = send(&app, req("PUT", &format!("/roles/{member_id}"), Some(&root), Some(json!({
+        "permission": "book_club_manager", "granted": false
+    })))).await;
+    assert_eq!(status, StatusCode::OK, "revoke failed: {mp}");
+    assert_eq!(mp["permissions"], json!([]));
+    let (status, _) = send(&app, req("GET", "/book-club/queue", Some(&member), None)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn full_admins_need_no_scoped_permission() {
+    if !emulator_available() { return; }
+    let app = test_app("roles-admin-passthrough").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (admin, _) = invite_and_register(&app, &root, "role2@test.com", "role2", "admin").await;
+
+    // A full admin reaches the Book Club panel without ever being granted
+    // the scoped permission — a permission is additive, not a substitute
+    // for the rank an admin already has.
+    let (status, _) = send(&app, req("GET", "/book-club/queue", Some(&admin), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, roles) = send(&app, req("GET", "/roles", Some(&admin), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    let mine = roles.as_array().unwrap().iter().find(|m| m["username"] == "role2").unwrap();
+    assert_eq!(mine["permissions"], json!([]), "not granted, and doesn't need to be");
+}
+
+#[tokio::test]
+async fn granting_an_unknown_user_404s() {
+    if !emulator_available() { return; }
+    let app = test_app("roles-404").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (status, _) = send(&app, req("PUT", "/roles/does-not-exist", Some(&root), Some(json!({
+        "permission": "book_club_manager", "granted": true
+    })))).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}

@@ -257,7 +257,7 @@ pub fn AdminEventsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                 fallback=|| view! { <p class="error">"Access denied."</p> }
             >
                 <h1>"Admin"</h1>
-                <AdminNav active="events" is_superadmin=is_superadmin() />
+                <AdminNav active="events" is_admin=true is_superadmin=is_superadmin() />
 
                 <Card>
                     <h2>"Post a Movie"</h2>

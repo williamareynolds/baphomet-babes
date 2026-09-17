@@ -128,7 +128,7 @@ pub fn AdminCalendarLinksPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView
                 fallback=|| view! { <p class="error">"Access denied."</p> }
             >
                 <h1>"Admin"</h1>
-                <AdminNav active="calendar-links" is_superadmin=true />
+                <AdminNav active="calendar-links" is_admin=true is_superadmin=true />
 
                 <Card>
                     <h2>"New calendar link"</h2>

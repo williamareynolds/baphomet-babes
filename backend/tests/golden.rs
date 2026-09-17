@@ -21,6 +21,7 @@ fn auth_response_wire_format() {
             email: "babe@baphometbabes.com".into(),
             username: "firstbabe".into(),
             role: "superadmin".into(),
+            permissions: vec![],
         },
     })
     .unwrap();

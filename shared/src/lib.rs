@@ -7,6 +7,11 @@ pub struct AuthUser {
     pub username: String,
     pub role: String,
     pub token: String,
+    /// Scoped grants beyond role, e.g. `book_club_manager`. Additive only —
+    /// a full admin/superadmin already has every capability regardless of
+    /// what's here. See [`PERMISSION_BOOK_CLUB_MANAGER`].
+    #[serde(default)]
+    pub permissions: Vec<String>,
 }
 
 impl AuthUser {
@@ -15,6 +20,11 @@ impl AuthUser {
     }
     pub fn is_superadmin(&self) -> bool {
         self.role == "superadmin"
+    }
+    /// Whether this member can act on `perm` — either because they hold it
+    /// directly, or because full admins can do everything regardless.
+    pub fn has_permission(&self, perm: &str) -> bool {
+        self.is_admin() || self.permissions.iter().any(|p| p == perm)
     }
 }
 
@@ -60,6 +70,8 @@ pub struct UserInfo {
     pub email: String,
     pub username: String,
     pub role: String,
+    #[serde(default)]
+    pub permissions: Vec<String>,
 }
 
 // Events
@@ -762,6 +774,37 @@ pub struct UserSummary {
 pub struct UpdateUserRequest {
     pub role: Option<String>,
     pub disabled: Option<bool>,
+}
+
+// Scoped permissions ("RBAC-lite")
+//
+// A role tier (member/admin/superadmin) is a rank; a permission is an
+// orthogonal grant on top of it — e.g. a plain member who runs the Book Club
+// admin panel without getting Events/Invites/Broadcast too. Kept as a flat
+// string list on the account rather than a fixed enum so the next scoped
+// role is an addition to `KNOWN_PERMISSIONS`, not a new column everywhere.
+pub const PERMISSION_BOOK_CLUB_MANAGER: &str = "book_club_manager";
+
+/// (key, display label) — the Roles admin page renders one column per entry.
+pub const KNOWN_PERMISSIONS: &[(&str, &str)] = &[
+    (PERMISSION_BOOK_CLUB_MANAGER, "Book Club Manager"),
+];
+
+/// One member's permission grants, as shown on the Roles admin page.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct MemberPermissions {
+    pub user_id: String,
+    pub username: String,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub permissions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateMemberPermissionRequest {
+    pub permission: String,
+    pub granted: bool,
 }
 
 // Notifications

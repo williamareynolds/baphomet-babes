@@ -109,7 +109,7 @@ pub fn AdminAnnouncementsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView
                 fallback=|| view! { <p class="error">"Access denied."</p> }
             >
                 <h1>"Admin"</h1>
-                <AdminNav active="announcements" is_superadmin=is_superadmin() />
+                <AdminNav active="announcements" is_admin=true is_superadmin=is_superadmin() />
 
                 <Card>
                     <h2>"New Announcement"</h2>

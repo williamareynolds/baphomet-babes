@@ -1079,3 +1079,96 @@ test("admin reorders and removes book club queue entries", async ({ page }) => {
     .click();
   await expect(page.locator(".mn-row").filter({ hasText: "Beloved" })).toHaveCount(0);
 });
+
+test("a scoped Book Club Manager reaches only the Book Club admin panel", async ({
+  page,
+  browser,
+}) => {
+  // Root stays logged into `page` for the whole test — a second browser
+  // context carries the manager's separate session, so this doesn't need to
+  // repeatedly log root out and back in (each login is a real POST /auth/*,
+  // and the suite runs serially from one IP; churning through many rapid
+  // logins here was tripping the auth rate limiter).
+  await login(page);
+  await page.goto("/admin/invites");
+  const stamp = Date.now();
+  const invitee = `Manager${stamp}`;
+  await page.getByPlaceholder("First name").fill(invitee);
+  await page.getByRole("button", { name: "Generate" }).click();
+  await expect(page.locator(".success")).toContainText("created and copied");
+  const inviteCard = page.locator(".thaw-card").filter({ hasText: invitee });
+  await expect(inviteCard).toBeVisible();
+  const code = ((await inviteCard.locator("code").first().textContent()) ?? "").trim();
+  expect(code).not.toEqual("");
+
+  const managerCtx = await browser.newContext();
+  const mgr = await managerCtx.newPage();
+  const username = `manager${stamp}`;
+  const email = `manager-${stamp}@e2e.test`;
+
+  async function loginAsManager() {
+    await mgr.goto("/login");
+    await mgr.fill("#login-email", email);
+    await mgr.fill("#login-password", "member-pw-123");
+    await mgr.click('form button[type="submit"]');
+    await expect(mgr.getByRole("button", { name: "Logout" })).toBeVisible();
+  }
+
+  // Onboard the manager via the invite link (auto-logs them in).
+  await mgr.goto(`/login?code=${encodeURIComponent(code)}`);
+  await mgr.fill("#reg-email", email);
+  await mgr.fill("#reg-username", username);
+  await mgr.fill("#reg-password", "member-pw-123");
+  await mgr.click('form button[type="submit"]');
+  await expect(mgr.getByRole("button", { name: "Logout" })).toBeVisible();
+
+  // Before any grant: no Admin link, and the admin routes refuse them.
+  await expect(mgr.getByRole("link", { name: "Admin" })).toHaveCount(0);
+  await mgr.goto("/admin/book-club");
+  await expect(mgr.getByText("Access denied.")).toBeVisible();
+
+  // Root grants the scoped permission from the Roles page.
+  await page.goto("/admin/roles");
+  const row = page.locator(".thaw-card").filter({ hasText: username });
+  await expect(row).toBeVisible();
+  await row.getByRole("switch").click();
+
+  // The permission only lands in the manager's own session on their next
+  // login (their cached AuthUser doesn't self-refresh, same as a role change
+  // wouldn't) — the member now reaches the Book Club panel, and only that one.
+  await loginAsManager();
+  const adminLink = mgr.getByRole("link", { name: "Admin" });
+  await expect(adminLink).toBeVisible();
+  await expect(adminLink).toHaveAttribute("href", "/admin/book-club");
+  await adminLink.click();
+  await expect(mgr.getByRole("heading", { name: "Book Club" })).toBeVisible();
+  // Only the Book Club tab shows — no Announcements/Events/Invites/Roles.
+  await expect(mgr.locator(".admin-tabs").getByText("Announcements")).toHaveCount(0);
+  await expect(mgr.locator(".admin-tabs").getByText("Roles")).toHaveCount(0);
+
+  // Still no access to full-admin-only areas.
+  await mgr.goto("/admin/events");
+  await expect(mgr.getByText("Access denied.")).toBeVisible();
+  await mgr.goto("/admin/roles");
+  await expect(mgr.getByText("Access denied.")).toBeVisible();
+
+  // The permission is functional, not just a nav affordance.
+  await mgr.goto("/admin/book-club");
+  await mgr.getByRole("button", { name: "+ Add to queue" }).click();
+  await mgr.getByPlaceholder("Wide Sargasso Sea").fill("Kindred");
+  await mgr.getByPlaceholder("Jean Rhys").fill("Octavia Butler");
+  await mgr.getByRole("button", { name: "Add to queue" }).click();
+  await expect(mgr.locator(".success")).toContainText("Added to the queue");
+
+  // Root revokes it (still the same root session — no relogin needed); the
+  // member loses access again on their next login.
+  await row.getByRole("switch").click();
+  await expect(row.getByRole("switch")).not.toBeChecked();
+
+  await loginAsManager();
+  await expect(mgr.getByRole("link", { name: "Admin" })).toHaveCount(0);
+  await mgr.goto("/admin/book-club");
+  await expect(mgr.getByText("Access denied.")).toBeVisible();
+
+  await managerCtx.close();
+});

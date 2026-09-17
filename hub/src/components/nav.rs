@@ -64,8 +64,17 @@ pub fn Nav(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                     <Show when=move || !crate::pwa::is_standalone()>
                         <A href="/install">"Install App"</A>
                     </Show>
-                    <Show when=move || auth.get().map(|u| u.is_admin()).unwrap_or(false)>
-                        <A href="/admin/events">"Admin"</A>
+                    // Full admins land on Events; a scoped manager (e.g. Book
+                    // Club Manager) who isn't a full admin has nothing to do
+                    // there, so send them straight to the one admin area
+                    // they can actually use.
+                    <Show when=move || {
+                        auth.get().map(|u| u.is_admin() || !u.permissions.is_empty()).unwrap_or(false)
+                    }>
+                        <A href=move || {
+                            let is_admin = auth.get().map(|u| u.is_admin()).unwrap_or(false);
+                            if is_admin { "/admin/events".to_string() } else { "/admin/book-club".to_string() }
+                        }>"Admin"</A>
                     </Show>
                     <button class="nav-link-btn" on:click=logout>"Logout"</button>
                 </Show>

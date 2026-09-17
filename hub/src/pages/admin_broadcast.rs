@@ -55,7 +55,7 @@ pub fn AdminBroadcastPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                 fallback=|| view! { <p class="error">"Access denied."</p> }
             >
                 <h1>"Admin"</h1>
-                <AdminNav active="broadcast" is_superadmin=is_superadmin() />
+                <AdminNav active="broadcast" is_admin=true is_superadmin=is_superadmin() />
 
                 <Card>
                     <h2>"Broadcast"</h2>
