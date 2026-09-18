@@ -257,6 +257,18 @@ pub struct EmailTokenDoc {
     pub created_at: i64,
 }
 
+/// One-time password-reset link, minted by a superadmin and mailed to the
+/// member. Doc id is the token itself, unlike the per-user tokens above —
+/// several resets could otherwise race to overwrite each other's doc. Consuming
+/// it deletes the doc, so a forwarded or reused link fails instead of quietly
+/// resetting the password again.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PasswordResetTokenDoc {
+    pub token: String,
+    pub user_id: String,
+    pub created_at: i64,
+}
+
 /// One group-chat message. Doc id is `id`. `author` is denormalized at write
 /// time so the feed needs no profile joins.
 #[derive(Debug, Clone, Serialize, Deserialize)]

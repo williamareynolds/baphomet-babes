@@ -4,7 +4,7 @@ use shared::{
     InviteCode, LoginRequest, NotificationPrefs, Profile, RegisterPushTokenRequest,
     RegisterRequest, Ride, Rsvp, RsvpRequest, SendChatRequest, TestPushResponse,
     UpdateAnnouncementRequest, UpdateEventRequest, UpdateNotificationPrefs, UpdateProfileRequest,
-    UpdateRideRequest, UpdateUserRequest, UserSummary,
+    UpdateRideRequest, UpdateUserRequest, UserSummary, PasswordResetInfo, ResetPasswordRequest,
 };
 use shared::{
     CreateExternalCalendarRequest, CreateGatheringRequest, ExternalCalendarLink, Gathering,
@@ -103,6 +103,20 @@ async fn get<T: serde::de::DeserializeOwned>(path: &str, token: &str) -> Result<
         .map_err(|e| e.to_string())?;
     if !resp.ok() {
         return Err(error_message(resp, true).await);
+    }
+    resp.json().await.map_err(|e| e.to_string())
+}
+
+/// GET with no session — for public pages like the reset-password link.
+async fn get_public<T: serde::de::DeserializeOwned>(path: &str) -> Result<T, String> {
+    let req = gloo_net::http::Request::get(&format!("{}{path}", api_base()));
+    let resp = attach_app_check(req)
+        .await
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.ok() {
+        return Err(error_message(resp, false).await);
     }
     resp.json().await.map_err(|e| e.to_string())
 }
@@ -419,6 +433,24 @@ pub async fn fetch_users(token: &str) -> Result<Vec<UserSummary>, String> {
 
 pub async fn update_user(id: &str, req: UpdateUserRequest, token: &str) -> Result<UserSummary, String> {
     put_json(&format!("/users/{id}"), &req, token).await
+}
+
+pub async fn send_password_reset(id: &str, token: &str) -> Result<(), String> {
+    post_unit(&format!("/users/{id}/password-reset"), &(), token).await
+}
+
+/// Public: consumes a superadmin-issued reset link, logging the member in
+/// with their newly chosen password. No auth token — the reset token in the
+/// URL path is the credential.
+pub async fn consume_password_reset(reset_token: &str, password: String) -> Result<AuthResponse, String> {
+    post_json(&format!("/auth/reset-password/{reset_token}"), &ResetPasswordRequest { password }, None).await
+}
+
+/// Public: which account a reset link belongs to, without consuming it — lets
+/// the reset page show the email and give password managers a
+/// `autocomplete="username"` field to match against.
+pub async fn password_reset_info(reset_token: &str) -> Result<PasswordResetInfo, String> {
+    get_public(&format!("/auth/reset-password/{reset_token}")).await
 }
 
 // ---- Scoped permissions ("Roles" page) ----

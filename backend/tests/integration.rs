@@ -1928,6 +1928,22 @@ async fn create_event(app: &Router, admin: &str, body: Value) -> String {
     ev["id"].as_str().unwrap().to_string()
 }
 
+/// Pull the reset token out of a password-reset email the mock Resend server
+/// received.
+fn reset_token_from_mail(msg: &Value) -> String {
+    let html = msg["html"].as_str().unwrap();
+    let link = html
+        .split("href=\"")
+        .nth(1)
+        .and_then(|s| s.split('"').next())
+        .expect("email must carry a reset link");
+    link.strip_prefix(TEST_BASE_URL)
+        .expect("link must be absolute and on the public base URL")
+        .strip_prefix("/reset-password?token=")
+        .expect("link must point at /reset-password")
+        .to_string()
+}
+
 #[tokio::test]
 async fn email_goes_only_to_members_subscribed_to_that_channel() {
     if !emulator_available() { return; }
@@ -2046,6 +2062,172 @@ async fn unsubscribe_link_works_without_a_session() {
     // A token that was never minted is a 404, not a silent success.
     let (status, _) = send(&app, req("POST", "/email/unsubscribe/not-a-real-token", None, None)).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn password_reset_is_superadmin_only_and_emails_a_one_time_link() {
+    if !emulator_available() { return; }
+    let (app, mail) = test_app_with_email("pw-reset").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (admin, _admin_id) = invite_and_register(&app, &root, "admin@test.com", "admin1", "admin").await;
+    let (_member, member_id) = invite_and_register(&app, &root, "m@test.com", "member1", "member").await;
+
+    // Only a superadmin can trigger a reset.
+    let (status, _) = send(&app, req("POST", &format!("/users/{member_id}/password-reset"), Some(&admin), None)).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    let (status, _) = send(&app, req("POST", &format!("/users/{member_id}/password-reset"), Some(&root), None)).await;
+    assert_eq!(status, StatusCode::OK);
+
+    mail.wait_for(1).await;
+    let msg = &mail.requests()[0];
+    assert_eq!(msg["to"][0], "m@test.com");
+    assert_eq!(msg["subject"], "Reset your Baphomet Babes password");
+    let token = reset_token_from_mail(msg);
+
+    // GET peeks the link's account without consuming it — the reset page
+    // uses this to prefill a `username` field for password managers.
+    let (status, info) = send(&app, req("GET", &format!("/auth/reset-password/{token}"), None, None)).await;
+    assert_eq!(status, StatusCode::OK, "{info}");
+    assert_eq!(info["email"], "m@test.com");
+    let (status, info) = send(&app, req("GET", &format!("/auth/reset-password/{token}"), None, None)).await;
+    assert_eq!(status, StatusCode::OK, "peeking twice must not consume it: {info}");
+
+    // A token that was never minted 401s rather than leaking whether it exists.
+    let (status, _) = send(&app, req("GET", "/auth/reset-password/not-a-real-token", None, None)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    // Too short a password is rejected without consuming the link.
+    let (status, body) = send(&app, req("POST", &format!("/auth/reset-password/{token}"), None, Some(json!({
+        "password": "short"
+    })))).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{body}");
+
+    // The member picks their own new password and is logged straight in.
+    let (status, body) = send(&app, req("POST", &format!("/auth/reset-password/{token}"), None, Some(json!({
+        "password": "a-brand-new-password"
+    })))).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body["token"].is_string());
+    assert_eq!(body["user"]["username"], "member1");
+
+    // The link is single-use, for both POST and the GET peek.
+    let (status, _) = send(&app, req("POST", &format!("/auth/reset-password/{token}"), None, Some(json!({
+        "password": "another-new-password"
+    })))).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, _) = send(&app, req("GET", &format!("/auth/reset-password/{token}"), None, None)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    // Old password no longer works; the new one does.
+    let (status, _) = send(&app, req("POST", "/auth/login", None, Some(json!({
+        "email": "m@test.com", "password": "hunter2hunter2"
+    })))).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    let (status, _) = send(&app, req("POST", "/auth/login", None, Some(json!({
+        "email": "m@test.com", "password": "a-brand-new-password"
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn password_reset_requires_email_to_be_configured() {
+    if !emulator_available() { return; }
+    let app = test_app("pw-reset-noemail").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (_member, member_id) = invite_and_register(&app, &root, "m@test.com", "member1", "member").await;
+
+    let (status, _) = send(&app, req("POST", &format!("/users/{member_id}/password-reset"), Some(&root), None)).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn password_reset_link_expires_after_an_hour() {
+    if !emulator_available() { return; }
+    let project = format!("bb-test-pw-reset-ttl-{}", std::process::id());
+    let (url, mail) = mock_resend::start().await;
+    let db = FirestoreDb::new(&project).await.expect("emulator connection");
+    let state = AppState {
+        db,
+        jwt_secret: JWT_SECRET.into(),
+        superadmin_invite_code: BOOTSTRAP.into(),
+        app_check: None,
+        fcm: None,
+        email: Some(backend::email::Email::with_endpoint(
+            "test-resend-key",
+            "Baphomet Babes <noreply@test.baphometbabes.com>",
+            url,
+        )),
+        public_base_url: TEST_BASE_URL.into(),
+        reminder_secret: Some(REMINDER_SECRET.into()),
+        media: None,
+    };
+    let app = build_app(state, None, RateLimit { per_second: 1, burst: 1_000_000 });
+
+    let root = bootstrap_superadmin(&app).await;
+    let (_member, member_id) = invite_and_register(&app, &root, "m@test.com", "member1", "member").await;
+
+    let (status, _) = send(&app, req("POST", &format!("/users/{member_id}/password-reset"), Some(&root), None)).await;
+    assert_eq!(status, StatusCode::OK);
+    mail.wait_for(1).await;
+    let token = reset_token_from_mail(&mail.requests()[0]);
+
+    // Backdate the token doc past the 1-hour TTL (RESET_TOKEN_TTL_SECS in
+    // routes::auth) directly in Firestore — there's no other way to make a
+    // freshly-minted link look old.
+    let db2 = FirestoreDb::new(&project).await.expect("emulator connection");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    let _: backend::models::PasswordResetTokenDoc = db2
+        .fluent()
+        .update()
+        .in_col("password_reset_tokens")
+        .document_id(&token)
+        .object(&backend::models::PasswordResetTokenDoc {
+            token: token.clone(),
+            user_id: member_id,
+            created_at: now - 3601,
+        })
+        .execute()
+        .await
+        .expect("failed to backdate reset token");
+
+    let (status, _) = send(&app, req("GET", &format!("/auth/reset-password/{token}"), None, None)).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "expired link must be rejected");
+
+    let (status, _) = send(&app, req("POST", &format!("/auth/reset-password/{token}"), None, Some(json!({
+        "password": "a-brand-new-password"
+    })))).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "expired link must not let the password be set");
+}
+
+#[tokio::test]
+async fn password_reset_works_even_for_a_disabled_member() {
+    if !emulator_available() { return; }
+    let (app, mail) = test_app_with_email("pw-reset-disabled").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (_member, member_id) = invite_and_register(&app, &root, "m@test.com", "member1", "member").await;
+
+    let (status, _) = send(&app, req("PUT", &format!("/users/{member_id}"), Some(&root), Some(json!({ "disabled": true })))).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // A superadmin can still mint and mail a reset link for a disabled member
+    // — useful for fixing their credentials before re-enabling the account.
+    let (status, _) = send(&app, req("POST", &format!("/users/{member_id}/password-reset"), Some(&root), None)).await;
+    assert_eq!(status, StatusCode::OK);
+
+    mail.wait_for(1).await;
+    let token = reset_token_from_mail(&mail.requests()[0]);
+
+    // The reset itself is not gated on `disabled` — the member can still
+    // complete it and lands logged in, same as an enabled member.
+    let (status, body) = send(&app, req("POST", &format!("/auth/reset-password/{token}"), None, Some(json!({
+        "password": "a-brand-new-password"
+    })))).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert!(body["token"].is_string());
 }
 
 #[tokio::test]

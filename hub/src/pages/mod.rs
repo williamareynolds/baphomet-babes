@@ -15,5 +15,6 @@ pub mod login;
 pub mod members;
 pub mod movie_nights;
 pub mod profile;
+pub mod reset_password;
 pub mod rides;
 pub mod vote;

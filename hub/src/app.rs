@@ -19,6 +19,7 @@ use crate::{
         members::{MembersPage, MemberProfilePage},
         movie_nights::MovieNightsPage,
         profile::ProfilePage,
+        reset_password::ResetPasswordPage,
         rides::RidesPage,
         vote::VotePage,
     },
@@ -44,7 +45,7 @@ fn AuthGuard(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     let navigate = use_navigate();
     Effect::new(move |_| {
         let path = location.pathname.get();
-        if auth.get().is_none() && path != "/login" {
+        if auth.get().is_none() && path != "/login" && path != "/reset-password" {
             navigate("/login", NavigateOptions::default());
         }
     });
@@ -83,6 +84,7 @@ pub fn App() -> impl IntoView {
                 <Routes fallback=|| view! { <main><p>"Page not found."</p></main> }>
                     <Route path=path!("/") view=move || view! { <AnnouncementsPage auth=auth /> } />
                     <Route path=path!("/login") view=move || view! { <LoginPage auth=auth /> } />
+                    <Route path=path!("/reset-password") view=move || view! { <ResetPasswordPage auth=auth /> } />
                     <Route path=path!("/movie-nights") view=move || view! { <MovieNightsPage auth=auth /> } />
                     <Route path=path!("/book-club") view=move || view! { <BookClubPage auth=auth /> } />
                     <Route path=path!("/rides") view=move || view! { <RidesPage auth=auth /> } />

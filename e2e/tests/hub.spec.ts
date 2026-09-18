@@ -563,6 +563,87 @@ test("a single-use invite link prefills register and onboards a member", async (
   await expect(page.locator(".error")).toContainText("already used");
 });
 
+test("admin panel lists usernames and emails, and reset-email surfaces the not-configured error", async ({
+  page,
+}) => {
+  // Mint a fresh member so this test doesn't depend on state from earlier
+  // tests (e.g. whether the "wednesday" invite test ran first).
+  await login(page); // root is superadmin → admin
+  await page.goto("/admin/invites");
+  await page.getByPlaceholder("First name").fill("Fester");
+  await page.getByRole("button", { name: "Generate" }).click();
+  await expect(page.locator(".success")).toContainText("created and copied");
+  const inviteCard = page.locator(".thaw-card").filter({ hasText: "Fester" });
+  const code = ((await inviteCard.locator("code").first().textContent()) ?? "").trim();
+
+  const stamp = Date.now();
+  const email = `fester-${stamp}@e2e.test`;
+  const username = `fester${stamp}`;
+  await page.evaluate(() => localStorage.clear());
+  await page.goto(`/login?code=${encodeURIComponent(code)}`);
+  await page.fill("#reg-email", email);
+  await page.fill("#reg-username", username);
+  await page.fill("#reg-password", "member-pw-123");
+  await page.click('form button[type="submit"]');
+  await expect(page).toHaveURL("/");
+  await page.getByRole("button", { name: "Logout" }).click();
+
+  // Back in as the superadmin, the new member's row shows their username and
+  // email.
+  await login(page);
+  await page.goto("/admin/users");
+  const memberCard = page.locator(".thaw-card").filter({ hasText: username });
+  await expect(memberCard).toBeVisible();
+  await expect(memberCard.getByText(email)).toBeVisible();
+
+  // This harness runs the backend with no RESEND_API_KEY, so the real path to
+  // check here is the error surfaced when email isn't configured. The full
+  // emailed-link → set-password → login flow is covered against a mocked
+  // Resend server in backend/tests/integration.rs (password_reset_* tests).
+  await memberCard.getByRole("button", { name: "Email password reset" }).click();
+  await expect(
+    page.locator(".error").filter({ hasText: "email is not configured" }),
+  ).toBeVisible();
+});
+
+test("the reset-password page validates a new password before calling the backend", async ({
+  page,
+}) => {
+  // No token in the URL: the form still renders (so validation can be
+  // checked), but the missing-token notice shows up top.
+  await page.goto("/reset-password");
+  await expect(
+    page.locator(".error").filter({ hasText: "missing its token" }),
+  ).toBeVisible();
+
+  await page.fill("#reset-password", "short");
+  await page.fill("#reset-confirm", "short");
+  await page.click('form button[type="submit"]');
+  await expect(
+    page.locator(".error").filter({ hasText: "at least 8 characters" }),
+  ).toBeVisible();
+
+  await page.fill("#reset-password", "a-long-enough-password");
+  await page.fill("#reset-confirm", "does-not-match");
+  await page.click('form button[type="submit"]');
+  await expect(
+    page.locator(".error").filter({ hasText: "don't match" }),
+  ).toBeVisible();
+});
+
+test("the reset-password page rejects a token that doesn't exist", async ({
+  page,
+}) => {
+  await page.goto("/reset-password?token=not-a-real-token");
+  await expect(
+    page.locator(".error").filter({ hasText: "invalid or expired reset link" }),
+  ).toBeVisible();
+  // The account field never appears (the GET failed before it could learn the
+  // email), and submission is blocked rather than silently failing later.
+  await expect(page.locator("#reset-email")).not.toBeVisible();
+  await expect(page.getByRole("button", { name: "Save password" })).toBeDisabled();
+});
+
 test("profile exposes notification settings", async ({ page }) => {
   await login(page);
   await page.goto("/profile");

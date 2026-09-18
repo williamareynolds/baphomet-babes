@@ -26,6 +26,7 @@ pub fn AdminUsersPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
     });
 
     let (error, set_error) = signal(String::new());
+    let (reset_notice, set_reset_notice) = signal(String::new());
 
     // Apply a partial update (role and/or disabled) to one user, then refresh.
     let apply = move |id: String, req: UpdateUserRequest| {
@@ -34,6 +35,18 @@ pub fn AdminUsersPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
         wasm_bindgen_futures::spawn_local(async move {
             match api::update_user(&id, req, &user.token).await {
                 Ok(_) => set_refresh.update(|n| *n += 1),
+                Err(e) => set_error.set(e),
+            }
+        });
+    };
+
+    let send_reset = move |id: String| {
+        set_error.set(String::new());
+        set_reset_notice.set(String::new());
+        let Some(user) = auth.get() else { return };
+        wasm_bindgen_futures::spawn_local(async move {
+            match api::send_password_reset(&id, &user.token).await {
+                Ok(_) => set_reset_notice.set("Reset email sent.".to_string()),
                 Err(e) => set_error.set(e),
             }
         });
@@ -50,6 +63,9 @@ pub fn AdminUsersPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
 
                 <Show when=move || !error.get().is_empty()>
                     <p class="error">{move || error.get()}</p>
+                </Show>
+                <Show when=move || !reset_notice.get().is_empty()>
+                    <p>{move || reset_notice.get()}</p>
                 </Show>
 
                 <h2 class="section-heading">"All Accounts"</h2>
@@ -85,6 +101,10 @@ pub fn AdminUsersPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                     role: None,
                                     disabled: Some(!disabled),
                                 });
+
+                                let reset_id = u.id.clone();
+                                let do_reset = send_reset;
+                                let on_reset = move |_| do_reset(reset_id.clone());
 
                                 view! {
                                     <Card>
@@ -138,6 +158,12 @@ pub fn AdminUsersPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                                         </Button>
                                                     }.into_any()
                                                 }}
+                                                <Button
+                                                    appearance=ButtonAppearance::Secondary
+                                                    on_click=on_reset
+                                                >
+                                                    "Email password reset"
+                                                </Button>
                                             </div>
                                         </div>
                                     </Card>

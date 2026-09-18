@@ -776,6 +776,20 @@ pub struct UpdateUserRequest {
     pub disabled: Option<bool>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResetPasswordRequest {
+    pub password: String,
+}
+
+/// What the reset-password page needs to render before the member submits —
+/// just enough for a password manager to associate the new password with the
+/// right account (`autocomplete="username"`), and to tell them which account
+/// this is.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PasswordResetInfo {
+    pub email: String,
+}
+
 // Scoped permissions ("RBAC-lite")
 //
 // A role tier (member/admin/superadmin) is a rank; a permission is an
