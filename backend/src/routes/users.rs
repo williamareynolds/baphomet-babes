@@ -1,4 +1,4 @@
-use crate::{AppState, auth::require_superadmin, error::{AppError, AppResult}, models::{PasswordResetTokenDoc, PushTokenDoc, UserDoc}};
+use crate::{AppState, auth::require_superadmin, error::{AppError, AppResult}, models::{PasswordResetTokenDoc, ProfileDoc, PushTokenDoc, UserDoc}};
 use anyhow::Context;
 use axum::{Json, extract::{Path, State}, http::HeaderMap};
 use shared::{UpdateUserRequest, UserSummary};
@@ -8,6 +8,7 @@ use uuid::Uuid;
 const USERS: &str = "users";
 const PUSH_TOKENS: &str = "push_tokens";
 const PASSWORD_RESET_TOKENS: &str = "password_reset_tokens";
+const PROFILES: &str = "profiles";
 
 /// Mounted at /users — superadmin-only control panel.
 pub fn router() -> axum::Router<AppState> {
@@ -18,7 +19,7 @@ pub fn router() -> axum::Router<AppState> {
         .route("/{id}/password-reset", post(send_password_reset))
 }
 
-fn doc_to_summary(d: UserDoc, device_count: i64) -> UserSummary {
+fn doc_to_summary(d: UserDoc, display_name: Option<String>, phone: Option<String>, device_count: i64) -> UserSummary {
     UserSummary {
         id: d.id,
         email: d.email,
@@ -26,6 +27,8 @@ fn doc_to_summary(d: UserDoc, device_count: i64) -> UserSummary {
         role: d.role,
         disabled: d.disabled,
         created_at: d.created_at,
+        display_name,
+        phone,
         device_count,
     }
 }
@@ -60,11 +63,28 @@ async fn list_users(
         *counts.entry(t.user_id.clone()).or_insert(0) += 1;
     }
 
+    // Same scan-and-map for profiles — this panel needs the display name and
+    // phone to tell accounts apart, regardless of a profile's public/private
+    // setting.
+    let profiles: Vec<ProfileDoc> = state.db
+        .fluent()
+        .select()
+        .from(PROFILES)
+        .obj()
+        .query()
+        .await
+        .context("failed to list profiles")?;
+    let profiles: HashMap<String, ProfileDoc> =
+        profiles.into_iter().map(|p| (p.user_id.clone(), p)).collect();
+
     let mut users: Vec<UserSummary> = docs
         .into_iter()
         .map(|d| {
             let n = counts.get(&d.id).copied().unwrap_or(0);
-            doc_to_summary(d, n)
+            let profile = profiles.get(&d.id);
+            let display_name = profile.and_then(|p| p.display_name.clone()).filter(|s| !s.is_empty());
+            let phone = profile.and_then(|p| p.phone.clone());
+            doc_to_summary(d, display_name, phone, n)
         })
         .collect();
     users.sort_by(|a, b| a.username.to_lowercase().cmp(&b.username.to_lowercase()));
@@ -127,7 +147,18 @@ async fn update_user(
         .await
         .context("failed to count push tokens")?;
 
-    Ok(Json(doc_to_summary(updated, tokens.len() as i64)))
+    let profile: Option<ProfileDoc> = state.db
+        .fluent()
+        .select()
+        .by_id_in(PROFILES)
+        .obj()
+        .one(&id)
+        .await
+        .context("failed to fetch profile")?;
+    let display_name = profile.as_ref().and_then(|p| p.display_name.clone()).filter(|s| !s.is_empty());
+    let phone = profile.and_then(|p| p.phone);
+
+    Ok(Json(doc_to_summary(updated, display_name, phone, tokens.len() as i64)))
 }
 
 /// Mint a one-time reset link and mail it to the member. The superadmin never

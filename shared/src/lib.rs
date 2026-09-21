@@ -765,6 +765,18 @@ pub struct UserSummary {
     pub role: String, // "superadmin" | "admin" | "member"
     pub disabled: bool,
     pub created_at: i64,
+    /// The name shown on chat, rides, gatherings, etc. when set — resolved
+    /// the same way `chat::doc_to_message`'s `author` is, so this panel's
+    /// name matches what the member is actually posting under. `None` when
+    /// they never set a display name, in which case `username` is what shows
+    /// elsewhere too.
+    #[serde(default)]
+    pub display_name: Option<String>,
+    /// From the member's profile, regardless of its public/private setting —
+    /// this panel is for telling accounts apart, not the public directory.
+    /// `None` if they never set one.
+    #[serde(default)]
+    pub phone: Option<String>,
     /// How many devices this user has enrolled for push notifications.
     #[serde(default)]
     pub device_count: i64,

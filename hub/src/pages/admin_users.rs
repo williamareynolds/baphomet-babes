@@ -111,9 +111,19 @@ pub fn AdminUsersPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                         <div class="admin-row">
                                             <div>
                                                 <strong>{u.username.clone()}</strong>
+                                                {u.display_name.clone().map(|name| view! {
+                                                    <span style="margin-left:0.75rem;color:#e0c34a;font-size:0.8rem;">
+                                                        "chat: " {name}
+                                                    </span>
+                                                })}
                                                 <span style="margin-left:0.75rem;color:#bdafb2;font-size:0.8rem;">
                                                     {u.email.clone()}
                                                 </span>
+                                                {u.phone.clone().map(|phone| view! {
+                                                    <span style="margin-left:0.75rem;color:#bdafb2;font-size:0.8rem;">
+                                                        {phone}
+                                                    </span>
+                                                })}
                                                 <Show when=move || disabled>
                                                     <span style="margin-left:0.75rem;color:#e09aa6;font-size:0.8rem;">
                                                         "disabled"

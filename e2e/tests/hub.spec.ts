@@ -563,7 +563,7 @@ test("a single-use invite link prefills register and onboards a member", async (
   await expect(page.locator(".error")).toContainText("already used");
 });
 
-test("admin panel lists usernames and emails, and reset-email surfaces the not-configured error", async ({
+test("admin panel lists usernames, chat display names, emails and phone numbers, and reset-email surfaces the not-configured error", async ({
   page,
 }) => {
   // Mint a fresh member so this test doesn't depend on state from earlier
@@ -586,15 +586,35 @@ test("admin panel lists usernames and emails, and reset-email surfaces the not-c
   await page.fill("#reg-password", "member-pw-123");
   await page.click('form button[type="submit"]');
   await expect(page).toHaveURL("/");
+
+  // The member sets a phone number and a chat display name distinct from
+  // their account username, but leaves their profile private — the admin
+  // panel needs both to tell accounts apart (including matching who's who
+  // in chat) regardless of that setting.
+  const phone = "479-555-0199";
+  const chatName = `Spooky ${username}`;
+  await page.goto("/profile");
+  await page
+    .getByPlaceholder("Leave blank to use username")
+    .fill(chatName);
+  await page
+    .getByPlaceholder("Optional — only shown if profile is public")
+    .nth(1)
+    .fill(phone);
+  await page.getByRole("button", { name: "Save Profile" }).click();
+  await expect(page.locator(".success")).toHaveText("Profile saved.");
+
   await page.getByRole("button", { name: "Logout" }).click();
 
-  // Back in as the superadmin, the new member's row shows their username and
-  // email.
+  // Back in as the superadmin, the new member's row shows their username,
+  // chat display name, email and phone.
   await login(page);
   await page.goto("/admin/users");
   const memberCard = page.locator(".thaw-card").filter({ hasText: username });
   await expect(memberCard).toBeVisible();
+  await expect(memberCard.getByText(chatName)).toBeVisible();
   await expect(memberCard.getByText(email)).toBeVisible();
+  await expect(memberCard.getByText(phone)).toBeVisible();
 
   // This harness runs the backend with no RESEND_API_KEY, so the real path to
   // check here is the error surfaced when email isn't configured. The full

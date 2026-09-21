@@ -1238,6 +1238,47 @@ async fn user_list_reports_enrolled_device_count() {
 }
 
 #[tokio::test]
+async fn user_list_reports_display_name_and_phone_from_profile_even_when_private() {
+    if !emulator_available() { return; }
+    let app = test_app("userphone").await;
+    let root = bootstrap_superadmin(&app).await;
+    let (member, member_id) = invite_and_register(&app, &root, "m@test.com", "member1", "member").await;
+
+    let entry_for = |list: &Value| -> Value {
+        list.as_array().unwrap().iter()
+            .find(|u| u["id"] == member_id.as_str())
+            .unwrap()
+            .clone()
+    };
+
+    // No profile phone or display name set yet.
+    let (_, list) = send(&app, req("GET", "/users", Some(&root), None)).await;
+    let entry = entry_for(&list);
+    assert!(entry["phone"].is_null());
+    assert!(entry["display_name"].is_null());
+
+    // The member sets a phone number and a chat display name distinct from
+    // their account username, but keeps their profile private — the admin
+    // panel is for telling accounts apart (including matching who's who in
+    // chat), not the public directory, so both must show regardless.
+    let (status, _) = send(&app, req("PUT", "/profile/me", Some(&member), Some(json!({
+        "phone": "479-555-0142", "display_name": "Spooky Susan", "is_public": false
+    })))).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (_, list) = send(&app, req("GET", "/users", Some(&root), None)).await;
+    let entry = entry_for(&list);
+    assert_eq!(entry["phone"], "479-555-0142");
+    assert_eq!(entry["display_name"], "Spooky Susan");
+    assert_eq!(entry["username"], "member1", "account username stays distinct from the chat name");
+
+    // update_user's response carries both too, same as device_count.
+    let (_, updated) = send(&app, req("PUT", &format!("/users/{member_id}"), Some(&root), Some(json!({ "role": "member" })))).await;
+    assert_eq!(updated["phone"], "479-555-0142");
+    assert_eq!(updated["display_name"], "Spooky Susan");
+}
+
+#[tokio::test]
 async fn ride_create_join_and_visibility() {
     if !emulator_available() { return; }
     let app = test_app("rides").await;
