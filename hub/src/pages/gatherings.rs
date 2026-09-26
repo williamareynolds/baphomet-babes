@@ -6,6 +6,7 @@
 
 use crate::api;
 use crate::map;
+use crate::share;
 use auth_client::AuthUser;
 use leptos::html::Div;
 use leptos::prelude::*;
@@ -376,10 +377,33 @@ pub fn GatheringsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
         });
     };
 
+    // Everything's behind login, so there's no public per-gathering URL to
+    // hand out — share the details as text and point at the list page.
+    let (share_note, set_share_note) = signal(String::new());
+    let share_gathering = move |g: Gathering| {
+        let Some(origin) = web_sys::window().and_then(|w| w.location().origin().ok()) else {
+            return;
+        };
+        let mut text = format!("{}\n{}", g.title, pretty_when(&g.starts_at));
+        if let Some(a) = &g.address {
+            text.push('\n');
+            text.push_str(a);
+        }
+        let url = format!("{origin}/gatherings");
+        let on_status = Closure::<dyn FnMut(String)>::new(move |msg: String| {
+            set_share_note.set(msg);
+        });
+        share::share(&g.title, &text, &url, &on_status);
+        on_status.forget();
+    };
+
     view! {
         <main class="page">
             <h1 class="page-title">"Gatherings"</h1>
             <p class="page-sub">"Club get-togethers. Date, time and place are set — no voting."</p>
+            <Show when=move || !share_note.get().is_empty()>
+                <p class="share-note">{share_note.get()}</p>
+            </Show>
 
             <Show when=is_admin>
                 <div style="margin:1.5rem 0;">
@@ -518,6 +542,16 @@ pub fn GatheringsPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                         on_click=move |_| toggle_rsvp(id_rsvp.clone(), !going)
                                     >
                                         {if going { "Going ✓" } else { "RSVP" }}
+                                    </Button>
+                                    <Button
+                                        class="share-btn"
+                                        appearance=ButtonAppearance::Secondary
+                                        on_click={
+                                            let g = g.clone();
+                                            move |_| share_gathering(g.clone())
+                                        }
+                                    >
+                                        "Share"
                                     </Button>
 
                                     <Show when=is_admin>

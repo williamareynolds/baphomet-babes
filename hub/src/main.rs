@@ -6,6 +6,7 @@ mod map;
 mod pages;
 mod push;
 mod pwa;
+mod share;
 mod theme;
 
 fn main() {

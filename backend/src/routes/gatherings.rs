@@ -192,8 +192,7 @@ async fn load(state: &AppState, id: &str) -> AppResult<GatheringDoc> {
     doc.ok_or(AppError::NotFound)
 }
 
-/// Soonest first — a gathering list is about what's coming up, unlike the
-/// movie-night archive which reads backwards through past screenings.
+/// Newest first (reverse chronological) — matches the rest of the feed.
 async fn list_gatherings(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -208,7 +207,7 @@ async fn list_gatherings(
         .query()
         .await
         .context("failed to list gatherings")?;
-    docs.sort_by(|a, b| a.starts_at.cmp(&b.starts_at));
+    docs.sort_by(|a, b| b.starts_at.cmp(&a.starts_at));
 
     // One RSVP query for the whole list rather than one per gathering.
     let all: Vec<GatheringRsvpDoc> = state.db

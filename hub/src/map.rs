@@ -63,8 +63,17 @@ export function bb_map_init(id, lat, lng, seed, onPick) {
 export function bb_map_clear(id) { const m = registry[id]; if (m) m.clear(); }
 export function bb_map_destroy(id) { const m = registry[id]; if (m) m.destroy(); }
 // Recompute tile geometry — call after the map's container becomes visible
-// (e.g. a picker that initialised inside a hidden bottom sheet).
-export function bb_map_refresh(id) { const m = registry[id]; if (m) m.map.invalidateSize(); }
+// (e.g. a picker that initialised inside a hidden bottom sheet). Deferred two
+// frames: called the instant `display: none -> block` flips, before the
+// browser has laid the container out, so an immediate invalidateSize() reads
+// its old (often zero) width and only paints tiles for that sliver.
+export function bb_map_refresh(id) {
+  const m = registry[id];
+  if (!m) return;
+  requestAnimationFrame(function () {
+    requestAnimationFrame(function () { m.map.invalidateSize(); });
+  });
+}
 "##)]
 extern "C" {
     /// Initialise a Leaflet map in the div with the given id, centred on
