@@ -60,9 +60,10 @@
          always-present solid band, pinned to the true viewport top. Height
          collapses to 0 where there's no inset (desktop / non-notched), so it's a
          no-op everywhere else. z-index sits ABOVE every sticky bar — pwa-bar
-         (200) and nav (100) — so nothing, not even a frosted bar's translucent
-         top, can show through the strip; only the decorative noise (1000) is
-         higher. The 0px fallback guards browsers that don't grok env(). */
+         (200), nav (100), and the open mobile nav-links panel (220) — so
+         nothing, not even a frosted bar's translucent top, can show through
+         the strip; only the decorative noise (1000) is higher. The 0px
+         fallback guards browsers that don't grok env(). */
       body::before {
         content: '';
         position: fixed;
@@ -188,12 +189,17 @@
       @media (max-width: 720px) {
         .nav-toggle { display: flex; }
 
-        /* Drop the links out of the bar into an overlay panel under it. */
+        /* Drop the links out of the bar into an overlay panel under it.
+           z-index above pwa-bar/notif-onboard (200) — those are sticky at
+           the same top-of-page spot the open panel covers, and without this
+           they paint over its first row (the "missing Movie Nights link"
+           bug — only showed up where that banner renders, i.e. Android). */
         .nav-links {
           position: absolute;
           top: 100%;
           left: 0;
           right: 0;
+          z-index: 220;
           flex-direction: column;
           align-items: stretch;
           gap: 0;
