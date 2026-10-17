@@ -10,7 +10,7 @@ use crate::{
     AppState,
     auth::{require_auth, require_superadmin},
     error::{AppError, AppResult},
-    models::{CalendarTokenDoc, EventDoc, ExternalCalendarDoc, ProfileDoc},
+    models::{BookClubMeetupDoc, CalendarTokenDoc, EventDoc, ExternalCalendarDoc, ProfileDoc},
 };
 use anyhow::Context;
 use axum::{
@@ -27,6 +27,8 @@ const EVENTS: &str = "movie_nights";
 const CALENDAR_TOKENS: &str = "calendar_tokens";
 const EXTERNAL_CALENDARS: &str = "external_calendars";
 const PROFILES: &str = "profiles";
+const BOOK_CLUB_MEETUP: &str = "book_club_meetup";
+const BOOK_CLUB_MEETUP_DOC_ID: &str = "current";
 
 pub fn router() -> axum::Router<AppState> {
     use axum::routing::{delete, get, post};
@@ -273,7 +275,16 @@ async fn feed(
         .context("failed to load events")?;
     events.sort_by(|a, b| a.date.cmp(&b.date));
 
-    let body = build_ics(&events, &state.public_base_url);
+    let meetup: Option<BookClubMeetupDoc> = state.db
+        .fluent()
+        .select()
+        .by_id_in(BOOK_CLUB_MEETUP)
+        .obj()
+        .one(BOOK_CLUB_MEETUP_DOC_ID)
+        .await
+        .context("failed to load book club meetup")?;
+
+    let body = build_ics(&events, meetup.as_ref(), &state.public_base_url);
     Ok((
         [
             (header::CONTENT_TYPE, "text/calendar; charset=utf-8".to_string()),
@@ -304,6 +315,24 @@ fn ics_date(date: &str) -> Option<String> {
     let b = date.as_bytes();
     if b.len() == 10 && b[4] == b'-' && b[7] == b'-' && date[..4].bytes().chain(date[5..7].bytes()).chain(date[8..].bytes()).all(|c| c.is_ascii_digit()) {
         Some(format!("{}{}{}", &date[0..4], &date[5..7], &date[8..10]))
+    } else {
+        None
+    }
+}
+
+/// "YYYY-MM-DDTHH:MM" -> "YYYYMMDDTHHMMSS", floating (no Z/TZID). The club is
+/// all in one timezone (same convention as `shared::Gathering::starts_at`), so
+/// a floating local time — interpreted in whatever zone the calendar app is
+/// already set to — is what members mean, with no VTIMEZONE block needed.
+/// Returns None for anything malformed so a bad row is skipped rather than
+/// poisoning the whole feed.
+fn ics_naive_datetime(dt: &str) -> Option<String> {
+    let b = dt.as_bytes();
+    if b.len() == 16
+        && b[4] == b'-' && b[7] == b'-' && b[10] == b'T' && b[13] == b':'
+        && dt[..4].bytes().chain(dt[5..7].bytes()).chain(dt[8..10].bytes()).chain(dt[11..13].bytes()).chain(dt[14..16].bytes()).all(|c| c.is_ascii_digit())
+    {
+        Some(format!("{}{}{}T{}{}00", &dt[0..4], &dt[5..7], &dt[8..10], &dt[11..13], &dt[14..16]))
     } else {
         None
     }
@@ -349,7 +378,7 @@ fn alarm(description: &str) -> Vec<String> {
     ]
 }
 
-fn build_ics(events: &[EventDoc], base_url: &str) -> String {
+fn build_ics(events: &[EventDoc], meetup: Option<&BookClubMeetupDoc>, base_url: &str) -> String {
     let base = base_url.trim_end_matches('/');
     // RFC 5545 requires CRLF line endings.
     let mut out = String::new();
@@ -438,6 +467,26 @@ fn build_ics(events: &[EventDoc], base_url: &str) -> String {
         push("END:VEVENT".into());
     }
 
+    // The next book club meetup — one perpetual entry (stable UID) that moves
+    // as the admin reschedules it, same as the single "current" doc it reads.
+    if let Some(m) = meetup {
+        if let Some(start) = ics_naive_datetime(&m.starts_at) {
+            let mut description = format!("Hosted by {}.", m.host);
+            description.push_str(&format!("\n\n{base}/book-club"));
+
+            push("BEGIN:VEVENT".into());
+            push("UID:book-club-meetup@baphometbabes.com".into());
+            push(format!("DTSTAMP:{}", utc_stamp(m.updated_at)));
+            push(format!("DTSTART:{start}"));
+            push("SUMMARY:Book Club Meetup".into());
+            push(format!("DESCRIPTION:{}", esc(&description)));
+            if let Some(addr) = &m.address {
+                push(format!("LOCATION:{}", esc(addr)));
+            }
+            push("END:VEVENT".into());
+        }
+    }
+
     push("END:VCALENDAR".into());
     out
 }
@@ -471,7 +520,7 @@ mod tests {
             poll_embed_url: Some("https://rcv123.org/p/1".into()),
             ..event()
         };
-        let ics = build_ics(&[e], BASE);
+        let ics = build_ics(&[e], None, BASE);
 
         assert!(ics.contains("UID:e1-poll@baphometbabes.com"));
         assert!(ics.contains("DTSTART;VALUE=DATE:20260901"));
@@ -490,7 +539,7 @@ mod tests {
             poll_deadline: Some("2026-09-01".into()),
             ..event()
         };
-        let ics = build_ics(&[e], BASE);
+        let ics = build_ics(&[e], None, BASE);
 
         assert!(!ics.contains("-poll@baphometbabes.com"));
         assert!(ics.contains("DTSTART;VALUE=DATE:20260915"));
@@ -503,7 +552,7 @@ mod tests {
             rsvp_deadline: Some("2026-09-10".into()),
             ..event()
         };
-        let ics = build_ics(&[e], BASE);
+        let ics = build_ics(&[e], None, BASE);
 
         assert!(ics.contains("UID:e1-rsvp@baphometbabes.com"));
         assert!(ics.contains("DTSTART;VALUE=DATE:20260910"));
@@ -518,7 +567,7 @@ mod tests {
             rsvp_deadline: Some("2026-09-10".into()),
             ..event()
         };
-        let ics = build_ics(&[e], BASE);
+        let ics = build_ics(&[e], None, BASE);
         assert_eq!(ics.matches("BEGIN:VEVENT").count(), 2);
         assert_eq!(ics.matches("END:VEVENT").count(), 2);
     }
@@ -530,7 +579,7 @@ mod tests {
             rsvp_deadline: Some("".into()),
             ..event()
         };
-        let ics = build_ics(&[e], BASE);
+        let ics = build_ics(&[e], None, BASE);
         assert!(!ics.contains("BEGIN:VEVENT"));
         assert!(!ics.contains("next tuesday"));
     }
@@ -542,7 +591,7 @@ mod tests {
             poll_deadline: Some("2026-09-01".into()),
             ..event()
         };
-        let ics = build_ics(&[e], BASE);
+        let ics = build_ics(&[e], None, BASE);
         assert!(ics.contains("SUMMARY:Voting closes: Alien\\; or\\, Commas\\, Everywhere"));
     }
 
@@ -554,10 +603,48 @@ mod tests {
             rsvp_deadline: Some("2026-09-10".into()),
             ..event()
         };
-        let ics = build_ics(&[e], BASE);
+        let ics = build_ics(&[e], None, BASE);
         for line in ics.split("\r\n").filter(|l| !l.is_empty()) {
             assert!(!line.contains('\n'), "bare LF in {line:?}");
         }
         assert!(ics.ends_with("END:VCALENDAR\r\n"));
+    }
+
+    fn meetup() -> BookClubMeetupDoc {
+        BookClubMeetupDoc {
+            id: "current".into(),
+            starts_at: "2026-09-20T18:30".into(),
+            host: "Marisol V.".into(),
+            address: Some("1412 SE C St, Bentonville".into()),
+            lat: None,
+            lng: None,
+            updated_at: 0,
+        }
+    }
+
+    #[test]
+    fn a_book_club_meetup_gets_a_timed_floating_event() {
+        let ics = build_ics(&[], Some(&meetup()), BASE);
+
+        assert!(ics.contains("UID:book-club-meetup@baphometbabes.com"));
+        assert!(ics.contains("SUMMARY:Book Club Meetup"));
+        // Floating local time: no trailing Z, no TZID.
+        assert!(ics.contains("DTSTART:20260920T183000"));
+        assert!(ics.contains("Hosted by Marisol V."));
+        assert!(ics.contains("LOCATION:1412 SE C St\\, Bentonville"));
+        assert!(ics.contains("https://baphometbabes.com/book-club"));
+    }
+
+    #[test]
+    fn a_meetup_with_no_time_is_skipped_not_emitted_raw() {
+        let m = BookClubMeetupDoc { starts_at: "".into(), ..meetup() };
+        let ics = build_ics(&[], Some(&m), BASE);
+        assert!(!ics.contains("book-club-meetup"));
+    }
+
+    #[test]
+    fn no_meetup_means_no_book_club_event() {
+        let ics = build_ics(&[], None, BASE);
+        assert!(!ics.contains("book-club-meetup"));
     }
 }
