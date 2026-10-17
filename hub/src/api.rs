@@ -554,6 +554,14 @@ pub async fn remove_book_club_queue_item(id: &str, token: &str) -> Result<(), St
     delete(&format!("/book-club/queue/{id}"), token).await
 }
 
+pub async fn update_book_club_queue_item(
+    id: &str,
+    req: UpdateBookClubBookRequest,
+    token: &str,
+) -> Result<BookClubBook, String> {
+    put_json(&format!("/book-club/queue/{id}"), &req, token).await
+}
+
 pub async fn update_book_club_current(req: UpdateBookClubBookRequest, token: &str) -> Result<BookClubBook, String> {
     put_json("/book-club/current", &req, token).await
 }

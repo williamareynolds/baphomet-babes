@@ -41,7 +41,7 @@ fn now() -> i64 {
 }
 
 pub fn router() -> axum::Router<AppState> {
-    use axum::routing::{delete, get, post};
+    use axum::routing::{get, post, put};
     axum::Router::new()
         .route("/current", get(get_current).put(update_current))
         .route("/meetup", get(get_meetup).put(update_meetup))
@@ -50,7 +50,7 @@ pub fn router() -> axum::Router<AppState> {
         .route("/join", post(join))
         .route("/leave", post(leave))
         .route("/queue", get(get_queue).post(add_to_queue))
-        .route("/queue/{id}", delete(remove_from_queue))
+        .route("/queue/{id}", put(update_queue_item).delete(remove_from_queue))
         .route("/queue/{id}/move", post(move_in_queue))
         .route("/finish", post(finish))
         .route("/cover", post(upload_cover))
@@ -398,6 +398,53 @@ async fn move_in_queue(
 
     let queue = load_queue(&state).await?;
     Ok(Json(queue.into_iter().map(doc_to_book).collect()))
+}
+
+async fn update_queue_item(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(req): Json<UpdateBookClubBookRequest>,
+) -> AppResult<Json<shared::BookClubBook>> {
+    require_permission(&state, &headers, shared::PERMISSION_BOOK_CLUB_MANAGER).await?;
+    let queue = load_queue(&state).await?;
+    let existing = queue.into_iter().find(|b| b.id == id).ok_or(AppError::NotFound)?;
+
+    let title = req.title
+        .map(|t| t.trim().chars().take(MAX_SHORT).collect::<String>())
+        .unwrap_or(existing.title.clone());
+    let author = req.author
+        .map(|a| a.trim().chars().take(MAX_SHORT).collect::<String>())
+        .unwrap_or(existing.author.clone());
+    shared::validate_book_club_book(&title, &author).map_err(AppError::BadRequest)?;
+
+    let published = match req.published {
+        Some(p) if p.trim().is_empty() => None,
+        Some(p) => trimmed(Some(p), 50),
+        None => existing.published.clone(),
+    };
+    let why = match req.why {
+        Some(w) if w.trim().is_empty() => None,
+        Some(w) => trimmed(Some(w), MAX_TEXT),
+        None => existing.why.clone(),
+    };
+    let cover_url = match req.cover_url {
+        Some(c) if c.trim().is_empty() => None,
+        Some(c) => trimmed(Some(c), MAX_ADDRESS),
+        None => existing.cover_url.clone(),
+    };
+
+    let updated = BookClubBookDoc { title, author, published, why, cover_url, ..existing };
+    let _: BookClubBookDoc = state.db
+        .fluent()
+        .update()
+        .in_col(BOOKS)
+        .document_id(&updated.id)
+        .object(&updated)
+        .execute()
+        .await
+        .context("failed to update queued book")?;
+    Ok(Json(doc_to_book(updated)))
 }
 
 async fn remove_from_queue(

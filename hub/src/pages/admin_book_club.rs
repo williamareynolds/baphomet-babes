@@ -203,6 +203,52 @@ pub fn AdminBookClubPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
         });
     };
 
+    // ---- Queue item edit ----
+    let editing_queue_id: RwSignal<Option<String>> = RwSignal::new(None);
+    let eq_title = RwSignal::new(String::new());
+    let eq_author = RwSignal::new(String::new());
+    let eq_published = RwSignal::new(String::new());
+    let eq_why = RwSignal::new(String::new());
+    let eq_cover = RwSignal::new(String::new());
+
+    let start_edit_queue_item = move |b: BookClubBook| {
+        eq_title.set(b.title);
+        eq_author.set(b.author);
+        eq_published.set(b.published.unwrap_or_default());
+        eq_why.set(b.why.unwrap_or_default());
+        eq_cover.set(b.cover_url.unwrap_or_default());
+        editing_queue_id.set(Some(b.id));
+    };
+
+    let save_queue_item = move |_| {
+        let Some(user) = auth.get() else { return };
+        let Some(id) = editing_queue_id.get() else { return };
+        set_err.set(String::new());
+
+        if let Err(e) = shared::validate_book_club_book(&eq_title.get(), &eq_author.get()) {
+            set_err.set(e);
+            return;
+        }
+
+        let req = shared::UpdateBookClubBookRequest {
+            title: Some(eq_title.get()),
+            author: Some(eq_author.get()),
+            published: Some(eq_published.get()),
+            why: Some(eq_why.get()),
+            cover_url: Some(eq_cover.get()),
+        };
+        wasm_bindgen_futures::spawn_local(async move {
+            match api::update_book_club_queue_item(&id, req, &user.token).await {
+                Ok(_) => {
+                    editing_queue_id.set(None);
+                    set_note.set("Queue item updated.".into());
+                    set_refresh.update(|n| *n += 1);
+                }
+                Err(e) => set_err.set(e),
+            }
+        });
+    };
+
     // ---- Next meetup form ----
     let meetup_starts_at = RwSignal::new(String::new());
     let meetup_host = RwSignal::new(String::new());
@@ -410,26 +456,56 @@ pub fn AdminBookClubPage(auth: RwSignal<Option<AuthUser>>) -> impl IntoView {
                                     let id_up = b.id.clone();
                                     let id_down = b.id.clone();
                                     let id_del = b.id.clone();
+                                    let id_row = b.id.clone();
+                                    let b_edit = b.clone();
                                     view! {
                                         <div class="mn-row" style="align-items:center;padding:0.5rem 0;border-bottom:1px solid rgba(243,235,227,0.08);">
-                                            <div class="mn-body">
-                                                <span class="mn-title" style="font-size:1.1rem;">{b.title.clone()}</span>
-                                                " "
-                                                <span class="mn-date">{b.author.clone()}</span>
-                                            </div>
-                                            <div class="admin-actions">
-                                                <Button
-                                                    button_type=ButtonType::Button
-                                                    disabled=Signal::derive(move || i == 0)
-                                                    on_click=move |_| move_item(id_up.clone(), MoveDirection::Up)
-                                                >"↑"</Button>
-                                                <Button
-                                                    button_type=ButtonType::Button
-                                                    disabled=Signal::derive(move || i + 1 == count)
-                                                    on_click=move |_| move_item(id_down.clone(), MoveDirection::Down)
-                                                >"↓"</Button>
-                                                <Button button_type=ButtonType::Button on_click=move |_| remove_item(id_del.clone())>"×"</Button>
-                                            </div>
+                                            {move || {
+                                                if editing_queue_id.get().as_deref() == Some(id_row.as_str()) {
+                                                    view! {
+                                                        <div class="mn-body" style="width:100%;">
+                                                            <Field label="Title"><Input value=eq_title placeholder="Wide Sargasso Sea" /></Field>
+                                                            <Field label="Author"><Input value=eq_author placeholder="Jean Rhys" /></Field>
+                                                            <Field label="Published"><Input value=eq_published placeholder="1966" /></Field>
+                                                            <Field label="Why we picked it"><Textarea value=eq_why /></Field>
+                                                            <Field label="Cover URL"><Input value=eq_cover placeholder="https://…" /></Field>
+                                                            <div class="admin-actions">
+                                                                <Button appearance=ButtonAppearance::Primary on_click=save_queue_item>"Save Changes"</Button>
+                                                                <Button on_click=move |_| editing_queue_id.set(None)>"Cancel"</Button>
+                                                            </div>
+                                                        </div>
+                                                    }.into_any()
+                                                } else {
+                                                    let id_up = id_up.clone();
+                                                    let id_down = id_down.clone();
+                                                    let id_del = id_del.clone();
+                                                    let b2 = b_edit.clone();
+                                                    view! {
+                                                        <div class="mn-body">
+                                                            <span class="mn-title" style="font-size:1.1rem;">{b.title.clone()}</span>
+                                                            " "
+                                                            <span class="mn-date">{b.author.clone()}</span>
+                                                        </div>
+                                                        <div class="admin-actions">
+                                                            <Button
+                                                                button_type=ButtonType::Button
+                                                                disabled=Signal::derive(move || i == 0)
+                                                                on_click=move |_| move_item(id_up.clone(), MoveDirection::Up)
+                                                            >"↑"</Button>
+                                                            <Button
+                                                                button_type=ButtonType::Button
+                                                                disabled=Signal::derive(move || i + 1 == count)
+                                                                on_click=move |_| move_item(id_down.clone(), MoveDirection::Down)
+                                                            >"↓"</Button>
+                                                            <Button
+                                                                button_type=ButtonType::Button
+                                                                on_click=move |_| start_edit_queue_item(b2.clone())
+                                                            >"Edit"</Button>
+                                                            <Button button_type=ButtonType::Button on_click=move |_| remove_item(id_del.clone())>"×"</Button>
+                                                        </div>
+                                                    }.into_any()
+                                                }
+                                            }}
                                         </div>
                                     }
                                 }).collect::<Vec<_>>()}
