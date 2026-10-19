@@ -61,7 +61,7 @@ impl Default for RateLimit {
 /// body limit is 2MB, well under that, and rejects an oversized request with
 /// a plain-text 413 rather than our JSON error envelope — the frontend then
 /// shows a bare "unknown error" instead of the real "too large" message.
-const MAX_BODY_BYTES: usize = 8 * 1024 * 1024;
+const MAX_BODY_BYTES: usize = 16 * 1024 * 1024;
 
 pub fn build_app(state: AppState, allowed_origins: Option<&str>, rate_limit: RateLimit) -> Router {
     let cors = if let Some(origins_str) = allowed_origins {

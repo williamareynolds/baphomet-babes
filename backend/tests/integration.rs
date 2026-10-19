@@ -2645,13 +2645,14 @@ async fn a_cover_image_near_the_storage_cap_is_not_blocked_by_the_http_body_limi
     let app = test_app("gatherings-upload-large").await;
     let root = bootstrap_superadmin(&app).await;
 
-    // ~3MB raw -> ~4MB base64, comfortably over axum's 2MB default body
-    // limit but under storage::MAX_BYTES (5MB).
-    let raw = vec![0u8; 3 * 1024 * 1024];
+    // ~7.5MB raw (a real high-megapixel phone/camera photo) -> ~10MB base64,
+    // comfortably over axum's 2MB default body limit but under
+    // storage::MAX_BYTES (10MB).
+    let raw = vec![0u8; 7 * 1024 * 1024 + 512 * 1024];
     let data_base64 = base64::engine::general_purpose::STANDARD.encode(&raw);
 
     let (status, body) = send(&app, req("POST", "/gatherings/cover", Some(&root), Some(json!({
-        "content_type": "image/jpeg", "data_base64": data_base64
+        "content_type": "image/webp", "data_base64": data_base64
     })))).await;
     // Reaches the handler (no bucket configured in tests) rather than being
     // rejected at the HTTP layer.

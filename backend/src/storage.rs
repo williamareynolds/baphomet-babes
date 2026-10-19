@@ -31,9 +31,11 @@ const ALLOWED: &[(&str, &str)] = &[
     ("image/gif", "gif"),
 ];
 
-/// Cap on a single upload. Cover images are decoration; anything larger is a
-/// mistake or an attack on the storage bill.
-pub const MAX_BYTES: usize = 5 * 1024 * 1024;
+/// Cap on a single upload. Cover images are decoration, but modern phone/
+/// camera photos routinely run 5-8MB raw (high megapixel counts), so 5MB
+/// rejected ordinary uploads; anything past 10MB is a mistake or an attack on
+/// the storage bill.
+pub const MAX_BYTES: usize = 10 * 1024 * 1024;
 
 #[derive(Clone)]
 pub struct Media(Arc<Inner>);
