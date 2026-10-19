@@ -6,6 +6,7 @@
 
 use axum::{Router, body::Body, http::{Request, StatusCode}};
 use backend::{AppState, RateLimit, build_app};
+use base64::Engine;
 use firestore::FirestoreDb;
 use http_body_util::BodyExt;
 use serde_json::{Value, json};
@@ -2630,6 +2631,31 @@ async fn cover_upload_says_so_when_storage_is_unconfigured() {
         "content_type": "image/png", "data_base64": "aGk="
     })))).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(body["error"].as_str().unwrap().contains("aren't configured"), "got: {body}");
+}
+
+/// A real phone-camera jpeg easily clears axum's unconfigured 2MB default
+/// request body limit once base64-encoded. Without raising that limit, the
+/// request never reaches our handler at all — axum rejects it with a bare
+/// 413 that carries no JSON body, so the frontend shows a useless "unknown
+/// error" instead of our actual "too large"/"not configured" message.
+#[tokio::test]
+async fn a_cover_image_near_the_storage_cap_is_not_blocked_by_the_http_body_limit() {
+    if !emulator_available() { return; }
+    let app = test_app("gatherings-upload-large").await;
+    let root = bootstrap_superadmin(&app).await;
+
+    // ~3MB raw -> ~4MB base64, comfortably over axum's 2MB default body
+    // limit but under storage::MAX_BYTES (5MB).
+    let raw = vec![0u8; 3 * 1024 * 1024];
+    let data_base64 = base64::engine::general_purpose::STANDARD.encode(&raw);
+
+    let (status, body) = send(&app, req("POST", "/gatherings/cover", Some(&root), Some(json!({
+        "content_type": "image/jpeg", "data_base64": data_base64
+    })))).await;
+    // Reaches the handler (no bucket configured in tests) rather than being
+    // rejected at the HTTP layer.
+    assert_eq!(status, StatusCode::BAD_REQUEST, "got: {body}");
     assert!(body["error"].as_str().unwrap().contains("aren't configured"), "got: {body}");
 }
 

@@ -9,7 +9,7 @@ pub mod routes;
 pub mod storage;
 
 use std::sync::Arc;
-use axum::{Router, http::{HeaderValue, Method}, response::IntoResponse, routing::get};
+use axum::{Router, extract::DefaultBodyLimit, http::{HeaderValue, Method}, response::IntoResponse, routing::get};
 use firestore::FirestoreDb;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder, key_extractor::SmartIpKeyExtractor};
@@ -55,6 +55,13 @@ impl Default for RateLimit {
         RateLimit { per_second: 2, burst: 8 }
     }
 }
+
+/// Cover-image uploads are base64 JSON (`storage::MAX_BYTES` raw, inflated
+/// ~4/3 by base64 plus a little JSON envelope). Axum's unconfigured default
+/// body limit is 2MB, well under that, and rejects an oversized request with
+/// a plain-text 413 rather than our JSON error envelope — the frontend then
+/// shows a bare "unknown error" instead of the real "too large" message.
+const MAX_BODY_BYTES: usize = 8 * 1024 * 1024;
 
 pub fn build_app(state: AppState, allowed_origins: Option<&str>, rate_limit: RateLimit) -> Router {
     let cors = if let Some(origins_str) = allowed_origins {
@@ -132,6 +139,7 @@ pub fn build_app(state: AppState, allowed_origins: Option<&str>, rate_limit: Rat
         .nest("/users", routes::users::router())
         .nest("/notifications", routes::notifications::router())
         .layer(app_check_layer)
+        .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
         .with_state(state)
         .layer(cors)
 }
