@@ -23,6 +23,29 @@ use axum::{
 use shared::{CalendarToken, CreateExternalCalendarRequest, ExternalCalendarLink};
 use uuid::Uuid;
 
+/// Standard IANA-derived VTIMEZONE definition for America/Chicago (Central),
+/// covering the current US DST rule (2nd Sunday in March -> 1st Sunday in
+/// November, in effect since 2007). Lines are pushed as-is; CRLF is added by
+/// the same `push` closure every other line in the feed goes through.
+const VTIMEZONE_CHICAGO: &str = "BEGIN:VTIMEZONE
+TZID:America/Chicago
+X-LIC-LOCATION:America/Chicago
+BEGIN:DAYLIGHT
+TZOFFSETFROM:-0600
+TZOFFSETTO:-0500
+TZNAME:CDT
+DTSTART:19700308T020000
+RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU
+END:DAYLIGHT
+BEGIN:STANDARD
+TZOFFSETFROM:-0500
+TZOFFSETTO:-0600
+TZNAME:CST
+DTSTART:19701101T020000
+RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU
+END:STANDARD
+END:VTIMEZONE";
+
 const EVENTS: &str = "movie_nights";
 const CALENDAR_TOKENS: &str = "calendar_tokens";
 const EXTERNAL_CALENDARS: &str = "external_calendars";
@@ -320,12 +343,14 @@ fn ics_date(date: &str) -> Option<String> {
     }
 }
 
-/// "YYYY-MM-DDTHH:MM" -> "YYYYMMDDTHHMMSS", floating (no Z/TZID). The club is
-/// all in one timezone (same convention as `shared::Gathering::starts_at`), so
-/// a floating local time — interpreted in whatever zone the calendar app is
-/// already set to — is what members mean, with no VTIMEZONE block needed.
-/// Returns None for anything malformed so a bad row is skipped rather than
-/// poisoning the whole feed.
+/// "YYYY-MM-DDTHH:MM" -> "YYYYMMDDTHHMMSS", for use with `DTSTART;TZID=...`.
+/// The club is all in one timezone (same convention as
+/// `shared::Gathering::starts_at`), so the caller pairs this with
+/// `VTIMEZONE_CHICAGO` rather than emitting a bare floating time — floating
+/// DATE-TIME is read as UTC by some clients (Google Calendar, for subscribed
+/// feeds), which silently shifts the displayed time. Returns None for
+/// anything malformed so a bad row is skipped rather than poisoning the whole
+/// feed.
 fn ics_naive_datetime(dt: &str) -> Option<String> {
     let b = dt.as_bytes();
     if b.len() == 16
@@ -397,6 +422,15 @@ fn build_ics(events: &[EventDoc], meetup: Option<&BookClubMeetupDoc>, base_url: 
     // Hint clients to re-poll twice a day.
     push("REFRESH-INTERVAL;VALUE=DURATION:PT12H".into());
     push("X-PUBLISHED-TTL:PT12H".into());
+
+    // The club is all in one timezone (Central), and the only timed (not
+    // all-day) entry is the book club meetup below. Without an explicit
+    // VTIMEZONE + TZID, a "floating" local time is read as UTC by some
+    // clients (Google Calendar does this for subscribed feeds), shifting a
+    // 6:30pm meetup to display around 1:30pm.
+    for line in VTIMEZONE_CHICAGO.lines() {
+        push(line.to_string());
+    }
 
     for e in events {
         // Deadlines get their own all-day entries, so the dates that need
@@ -477,7 +511,7 @@ fn build_ics(events: &[EventDoc], meetup: Option<&BookClubMeetupDoc>, base_url: 
             push("BEGIN:VEVENT".into());
             push("UID:book-club-meetup@baphometbabes.com".into());
             push(format!("DTSTAMP:{}", utc_stamp(m.updated_at)));
-            push(format!("DTSTART:{start}"));
+            push(format!("DTSTART;TZID=America/Chicago:{start}"));
             push("SUMMARY:Book Club Meetup".into());
             push(format!("DESCRIPTION:{}", esc(&description)));
             if let Some(addr) = &m.address {
@@ -623,13 +657,16 @@ mod tests {
     }
 
     #[test]
-    fn a_book_club_meetup_gets_a_timed_floating_event() {
+    fn a_book_club_meetup_gets_a_timed_event_pinned_to_central_time() {
         let ics = build_ics(&[], Some(&meetup()), BASE);
 
         assert!(ics.contains("UID:book-club-meetup@baphometbabes.com"));
         assert!(ics.contains("SUMMARY:Book Club Meetup"));
-        // Floating local time: no trailing Z, no TZID.
-        assert!(ics.contains("DTSTART:20260920T183000"));
+        // Explicit TZID, not a bare floating time — some clients (Google
+        // Calendar, for subscribed feeds) read floating DATE-TIME as UTC.
+        assert!(ics.contains("DTSTART;TZID=America/Chicago:20260920T183000"));
+        assert!(ics.contains("BEGIN:VTIMEZONE"));
+        assert!(ics.contains("TZID:America/Chicago"));
         assert!(ics.contains("Hosted by Marisol V."));
         assert!(ics.contains("LOCATION:1412 SE C St\\, Bentonville"));
         assert!(ics.contains("https://baphometbabes.com/book-club"));
