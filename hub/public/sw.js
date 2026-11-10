@@ -67,7 +67,13 @@ self.addEventListener("notificationclick", (event) => {
 // v8: gatherings — new page, nav link, and notification toggles.
 // v9: gathering edit + map buttons no longer submit the form.
 // v10: calendar links for non-members (superadmin admin tab).
-const CACHE = "bb-shell-v10";
+// v11: book club queue edit, mobile nav z-index fix — two deploys in a row
+// that touched hub source/index.html without this bump, leaving installed
+// PWAs pinned to the old shell+bundle (website fine, app showing a black
+// screen on an old/deleted wasm filename). Bump on EVERY hub-touching
+// change from here on, not just user-visible ones — the hashed bundle name
+// moves either way.
+const CACHE = "bb-shell-v11";
 const SHELL = ["/"];
 
 self.addEventListener("install", (event) => {
